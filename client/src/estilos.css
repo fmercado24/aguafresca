@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  /* Color de marca: azul agua */
+  --color-marca-50: #eef8fb;
+  --color-marca-100: #d6eef5;
+  --color-marca-200: #b0dde9;
+  --color-marca-300: #7ac4d8;
+  --color-marca-400: #3ea3bf;
+  --color-marca-500: #2087a5;
+  --color-marca-600: #146c88;
+  --color-marca-700: #13576e;
+  --color-marca-800: #14485b;
+  --color-marca-900: #133c4d;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Gráficos: superficie, tinta y series (paleta validada para daltonismo) */
+  --viz-superficie: #ffffff;
+  --viz-tinta: #0b0b0b;
+  --viz-tinta-2: #52514e;
+  --viz-tenue: #898781;
+  --viz-rejilla: #e1e0d9;
+  --viz-eje: #c3c2b7;
+  --viz-serie-1: #2a78d6; /* capital */
+  --viz-serie-2: #eb6834; /* interés */
+  --viz-serie-1-suave: #cde2fb;
+
+  /* Estados de parcela en el mapa */
+  --mapa-disponible: #008300;
+  --mapa-reservada: #eda100;
+  --mapa-vendida: #898781;
+  --mapa-bloqueada: #52514e;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-stone-100 text-stone-900 antialiased;
+  font-family: var(--font-sans);
+}
+
+/* Los botones de Tailwind 4 no traen cursor de mano por defecto */
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
+/* ---------- Documentos confeccionados (cartas, promesas) ---------- */
+
+.documento {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11.5pt;
+  line-height: 1.55;
+  color: #111;
+  overflow-wrap: break-word;
+}
+.documento p { margin: 0 0 0.85em; }
+.documento h1 { font-size: 14pt; font-weight: 700; margin: 0 0 1em; }
+.documento h2 { font-size: 12.5pt; font-weight: 700; margin: 1.2em 0 0.6em; }
+.documento h3 { font-size: 11.5pt; font-weight: 700; margin: 1em 0 0.5em; }
+.documento ul { list-style: disc; margin: 0 0 0.85em 1.6em; }
+.documento ol { list-style: decimal; margin: 0 0 0.85em 1.6em; }
+.documento table.tabla-doc {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.4em 0 1.1em;
+  font-family: var(--font-sans);
+  font-size: 9.5pt;
+  font-variant-numeric: tabular-nums;
+}
+.documento table.tabla-doc th,
+.documento table.tabla-doc td {
+  border: 1px solid #bbb;
+  padding: 3px 7px;
+  text-align: left;
+}
+.documento table.tabla-doc th { background: #f1f1ee; font-weight: 600; }
+.documento table.tabla-doc .num { text-align: right; }
+.documento table.tabla-doc tr.total td { font-weight: 700; background: #f7f7f4; }
+.documento .firmas {
+  display: flex;
+  gap: 2.5em;
+  justify-content: space-around;
+  margin-top: 3.5em;
+  text-align: center;
+  break-inside: avoid;
+}
+.documento .firma { flex: 1; }
+.documento .salto-pagina { break-before: page; }
+
+/* En pantallas angostas, una tabla ancha se desplaza dentro del documento en vez de ensanchar la página */
+@media screen {
+  .documento { overflow-x: auto; }
+}
+
+/* El editor muestra dónde hay un salto de página */
+.editor-texto .salto-pagina {
+  border-top: 2px dashed #c3c2b7;
+  margin: 1.5em 0;
+  height: 0;
+}
+.editor-texto:focus { outline: none; }
+
+/* ---------- Impresión ---------- */
+
+@page {
+  size: letter;
+  margin: 2cm 2.2cm;
+}
+
+@media print {
+  html, body {
+    background: #fff !important;
+  }
+  .no-imprimir {
+    display: none !important;
+  }
+  .hoja {
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+  }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+  a { color: inherit; text-decoration: none; }
+}

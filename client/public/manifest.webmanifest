@@ -1,0 +1,18 @@
+{
+  "name": "Agua Fresca · Fundo Entre Ríos",
+  "short_name": "Entre Ríos",
+  "description": "Gestión de ventas de parcelas, créditos, cobranza y clientes.",
+  "lang": "es-CL",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14485b",
+  "theme_color": "#146c88",
+  "icons": [
+    { "src": "/icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
