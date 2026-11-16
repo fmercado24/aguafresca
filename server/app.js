@@ -9,6 +9,9 @@ import { ErrorApp } from './lib/validar.js';
 import { rutasAuth } from './rutas/auth.js';
 import { rutasConfiguracion } from './rutas/configuracion.js';
 import { rutasParcelas } from './rutas/parcelas.js';
+import { rutasAvisos } from './rutas/avisos.js';
+import { rutasEnvios } from './rutas/envios.js';
+import { rutasPush } from './rutas/push.js';
 import { rutasClientes } from './rutas/clientes.js';
 import { rutasVentas } from './rutas/ventas.js';
 import { rutasCobranza } from './rutas/cobranza.js';
@@ -59,6 +62,9 @@ api.use(rutasCobranza);
 api.use(rutasCotizaciones);
 api.use(rutasVisitas);
 api.use(rutasDocumentos);
+api.use(rutasAvisos);
+api.use(rutasEnvios);
+api.use(rutasPush);
 api.use((req, res) => res.status(404).json({ error: 'Recurso no encontrado' }));
 
 // Errores de la API: los esperados (ErrorApp) muestran su mensaje; el resto se registra y se oculta.

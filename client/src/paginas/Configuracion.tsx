@@ -1,26 +1,33 @@
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { CircleCheck, Download, KeyRound, Pencil, ShieldCheck } from 'lucide-react';
+import { BellRing, CircleCheck, Download, KeyRound, Pencil, ShieldCheck, UserRound } from 'lucide-react';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
 import { ACCIONES_REGISTRO, ListaCambios, listarCambios } from '../componentes/Cambios';
-import { descargarCsv, fechaHoraRegistro, formatearRut } from '../formato';
-import type { Config, Cuenta, EntradaRegistro, Permiso } from '../tipos';
-import { AreaTexto, Boton, Campo, Carga, Encabezado, Entrada, Insignia, Modal, Pestanas, Selector, Tabla, Tarjeta, Vacio, td, th } from '../ui';
+import { EnvioDeCartas } from './EnvioCartas';
+import { activarPush, desactivarPush, estadoPush, motivoSinPush, type EstadoPush } from '../push';
+import { correoValido, descargarCsv, errorTelefono, fechaHoraRegistro, formatearRut, rutValido } from '../formato';
+import type { Config, Cuenta, DatosPersonales, EntradaRegistro, Permiso } from '../tipos';
+import {
+  AreaTexto, Boton, Campo, Carga, Encabezado, Entrada, EntradaDecimal, EntradaEntero, EntradaRut, EntradaTelefono, Insignia, Modal, Pestanas, Selector,
+  Tabla, Tarjeta, Vacio, td, th,
+} from '../ui';
 
-type Pestana = 'empresa' | 'credito' | 'cuentas' | 'registro' | 'cuenta';
+type Pestana = 'empresa' | 'credito' | 'envios' | 'cuentas' | 'registro' | 'cuenta';
 
-const PESTANAS: { id: Pestana; etiqueta: string; permiso?: Permiso }[] = [
-  { id: 'empresa', etiqueta: 'Empresa y proyecto', permiso: 'empresa' },
-  { id: 'credito', etiqueta: 'Crédito y cobranza', permiso: 'contabilidad' },
-  { id: 'cuentas', etiqueta: 'Cuentas', permiso: 'administracion' },
-  { id: 'registro', etiqueta: 'Registro de cambios', permiso: 'administracion' },
+// Una pestaña se muestra si la cuenta tiene alguno de los permisos indicados.
+const PESTANAS: { id: Pestana; etiqueta: string; permisos?: Permiso[] }[] = [
+  { id: 'empresa', etiqueta: 'Empresa y proyecto', permisos: ['empresa'] },
+  { id: 'credito', etiqueta: 'Crédito y cobranza', permisos: ['contabilidad'] },
+  { id: 'envios', etiqueta: 'Envío de cartas', permisos: ['empresa', 'contabilidad'] },
+  { id: 'cuentas', etiqueta: 'Cuentas', permisos: ['administracion'] },
+  { id: 'registro', etiqueta: 'Registro de cambios', permisos: ['administracion', 'registro_duenos'] },
   { id: 'cuenta', etiqueta: 'Mi cuenta' },
 ];
 
 export function Configuracion() {
   const { puede } = useSesion();
-  const visibles = PESTANAS.filter((p) => !p.permiso || puede(p.permiso));
+  const visibles = PESTANAS.filter((p) => !p.permisos || p.permisos.some(puede));
   const [pestana, setPestana] = useState<Pestana>(visibles[0].id);
 
   return (
@@ -29,6 +36,7 @@ export function Configuracion() {
       {visibles.length > 1 && <Pestanas activa={pestana} alCambiar={setPestana} opciones={visibles.map(({ id, etiqueta }) => ({ id, etiqueta }))} />}
       {pestana === 'empresa' && <DatosEmpresa />}
       {pestana === 'credito' && <ParametrosCredito />}
+      {pestana === 'envios' && <EnvioDeCartas />}
       {pestana === 'cuentas' && <Cuentas />}
       {pestana === 'registro' && <Registro />}
       {pestana === 'cuenta' && <MiCuenta />}
@@ -49,8 +57,10 @@ function AvisoSensible({ children }: { children: ReactNode }) {
 
 const ETIQUETAS_EMPRESA: Partial<Record<keyof Config['empresa'], string>> = {
   razon_social: 'Razón social', rut: 'RUT de la empresa', giro: 'Giro', direccion: 'Dirección', ciudad: 'Ciudad', telefono: 'Teléfono',
-  email: 'Correo electrónico', representante: 'Representante legal', rut_representante: 'RUT del representante', datos_bancarios: 'Datos para transferencia',
+  email: 'Correo electrónico', representante: 'Representante legal', rut_representante: 'RUT del representante',
+  representante_cuenta: 'Datos del representante', datos_bancarios: 'Datos para transferencia',
 };
+const origenRepresentante = (cuenta: string) => (cuenta ? `datos personales de ${cuenta}` : 'escritos a mano');
 const ETIQUETAS_PROYECTO: Partial<Record<keyof Config['proyecto'], string>> = { nombre: 'Nombre del proyecto', ubicacion: 'Ubicación', inscripcion: 'Inscripción de dominio' };
 
 function DatosEmpresa() {
@@ -62,11 +72,26 @@ function DatosEmpresa() {
   const [proyecto, setProyecto] = useState(config.proyecto);
   const [guardando, setGuardando] = useState(false);
 
-  const cambios = [...listarCambios(inicialEmpresa, empresa, ETIQUETAS_EMPRESA), ...listarCambios(config.proyecto, proyecto, ETIQUETAS_PROYECTO)];
+  // Dueños que pueden ser representante legal, con el nombre y RUT de sus datos personales.
+  const duenos = (useDatos<Cuenta[]>('/usuarios').datos ?? []).filter((c) => c.datos);
+  const vinculado = duenos.find((c) => c.usuario === empresa.representante_cuenta);
+  const comparable = (e: typeof empresa) => ({ ...e, representante_cuenta: origenRepresentante(e.representante_cuenta) });
+  const cambios = [...listarCambios(comparable(inicialEmpresa), comparable(empresa), ETIQUETAS_EMPRESA), ...listarCambios(config.proyecto, proyecto, ETIQUETAS_PROYECTO)];
+
+  function elegirRepresentante(cuenta: Config['empresa']['representante_cuenta']) {
+    const d = duenos.find((c) => c.usuario === cuenta)?.datos;
+    setEmpresa({ ...empresa, representante_cuenta: cuenta, ...(d ? { representante: d.nombre_completo, rut_representante: formatearRut(d.rut) } : {}) });
+  }
 
   async function guardar(e: FormEvent) {
     e.preventDefault();
     if (!cambios.length) return avisos.ok('No hay cambios que guardar');
+    for (const [r, etq] of [[empresa.rut, 'RUT de la empresa'], [empresa.rut_representante, 'RUT del representante']] as const) {
+      if (r.trim() && !rutValido(r)) return avisos.error(`${etq}: revise el dígito verificador`);
+    }
+    const errTel = errorTelefono(empresa.telefono);
+    if (errTel) return avisos.error(errTel);
+    if (!correoValido(empresa.email)) return avisos.error('Revise el correo electrónico de la empresa');
     if (!(await avisos.confirmar({
       titulo: 'Confirmar cambios en los datos de la empresa',
       mensaje: <ListaCambios cambios={cambios} nota="Estos datos se insertan en cotizaciones, cartas y promesas que se emitan desde ahora. Los documentos ya emitidos no cambian." />,
@@ -102,14 +127,37 @@ function DatosEmpresa() {
       <Tarjeta titulo="Empresa">
         <div className="grid gap-3 sm:grid-cols-2">
           {campo('razon_social', 'Razón social', { required: true })}
-          {campo('rut', 'RUT de la empresa', { placeholder: '76.123.456-7' })}
+          <Campo etiqueta="RUT de la empresa"><EntradaRut valor={empresa.rut} alCambiar={(v) => setEmpresa({ ...empresa, rut: v })} placeholder="76.123.456-7" /></Campo>
           {campo('giro', 'Giro', { className: 'sm:col-span-2' })}
           {campo('direccion', 'Dirección')}
           {campo('ciudad', 'Ciudad')}
-          {campo('telefono', 'Teléfono', { type: 'tel' })}
-          {campo('email', 'Correo electrónico', { type: 'email' })}
-          {campo('representante', 'Representante legal')}
-          {campo('rut_representante', 'RUT del representante legal')}
+          <Campo etiqueta="Teléfono"><EntradaTelefono valor={empresa.telefono} alCambiar={(v) => setEmpresa({ ...empresa, telefono: v })} /></Campo>
+          {campo('email', 'Correo electrónico', { type: 'email', placeholder: 'contacto@empresa.cl' })}
+          <Campo
+            etiqueta="¿Quién es el representante legal?" className="sm:col-span-2"
+            ayuda={vinculado ? 'Sus datos (nombre, RUT, nacionalidad, estado civil, profesión) salen de lo que él mismo completa en Configuración → Mi cuenta, y se actualizan solos.' : 'Si es uno de los dueños, elíjalo: sus datos personales completarán la comparecencia y la firma de las promesas.'}
+          >
+            <Selector value={empresa.representante_cuenta} onChange={(e) => elegirRepresentante(e.target.value as Config['empresa']['representante_cuenta'])}>
+              <option value="">Otra persona (escribir nombre y RUT)</option>
+              {duenos.map((c) => <option key={c.id} value={c.usuario}>{c.nombre} ({c.usuario}) — datos de su perfil</option>)}
+            </Selector>
+          </Campo>
+          {vinculado ? (
+            <>
+              <Campo etiqueta="Representante legal"><Entrada disabled value={vinculado.datos!.nombre_completo || 'Sin completar'} /></Campo>
+              <Campo etiqueta="RUT del representante legal"><Entrada disabled value={formatearRut(vinculado.datos!.rut) || 'Sin completar'} /></Campo>
+              {(!vinculado.datos!.nombre_completo || !vinculado.datos!.rut) && (
+                <p className="text-sm text-amber-800 sm:col-span-2">
+                  {vinculado.usuario} todavía no completa su nombre completo y RUT en “Mis datos personales”: en los documentos saldrán como línea en blanco.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              {campo('representante', 'Representante legal')}
+              <Campo etiqueta="RUT del representante legal"><EntradaRut valor={empresa.rut_representante} alCambiar={(v) => setEmpresa({ ...empresa, rut_representante: v })} /></Campo>
+            </>
+          )}
           <Campo etiqueta="Datos para transferencia" ayuda="Banco, tipo y número de cuenta, RUT y correo para comprobantes." className="sm:col-span-2">
             <AreaTexto value={empresa.datos_bancarios} onChange={(e) => setEmpresa({ ...empresa, datos_bancarios: e.target.value })} />
           </Campo>
@@ -182,9 +230,13 @@ function ParametrosCredito() {
     }
   }
 
-  const campo = (k: keyof Config['credito'], ayuda: string, props: { step?: string; min?: number; max?: number } = {}) => (
+  // Números sin letras: enteros (cuotas y días) o con coma decimal (tasas y porcentaje del pie).
+  const ENTEROS: (keyof Config['credito'])[] = ['n_cuotas', 'dias_validez_cotizacion', 'dias_plazo_carta'];
+  const campo = (k: keyof Config['credito'], ayuda: string, _props: { step?: string; min?: number; max?: number } = {}) => (
     <Campo etiqueta={ETIQUETAS_CREDITO[k]} ayuda={ayuda}>
-      <Entrada type="number" inputMode="decimal" min={0} step="any" required value={credito[k]} onChange={(e) => setCredito({ ...credito, [k]: e.target.value })} {...props} />
+      {ENTEROS.includes(k)
+        ? <EntradaEntero required valor={credito[k]} alCambiar={(v) => setCredito({ ...credito, [k]: v })} />
+        : <EntradaDecimal required valor={credito[k]} alCambiar={(v) => setCredito({ ...credito, [k]: v })} />}
     </Campo>
   );
 
@@ -214,9 +266,9 @@ function ParametrosCredito() {
 // ---------- Las tres cuentas (super administrador) ----------
 
 const QUE_PUEDE: Record<string, string> = {
-  superadmin: 'Todo: datos sensibles de la empresa, precios y mapa de parcelas, cuentas, plantillas legales, tabla de amortización y datos contables.',
-  abogado: 'Funciones básicas y modificar las plantillas de documentos legales (promesas y cartas).',
-  contador: 'Funciones básicas, modificar la tabla de amortización y los datos contables (tasas, pagos, anulaciones).',
+  superadmin: 'Todo: datos sensibles de la empresa, correo de envío de cartas, precios y mapa de parcelas, cuentas, registro de cambios completo, plantillas legales, tabla de amortización y datos contables.',
+  abogado: 'Dueño. Ve toda la información (ventas, deudas, cobranza, ingresos) sin registrar nada de dinero. Cotiza e informa al contador las ventas que cierra; completa los datos esenciales de los clientes; agenda visitas a su nombre; trabaja los documentos legales (plantillas, promesas y cartas) y ve el registro de cambios de los dueños.',
+  contador: 'Dueño. Clientes, cotizaciones, ventas y pagos; tabla de amortización, datos contables, precios de las parcelas y envío programado de cartas. Ve el registro de cambios de los dueños.',
 };
 
 function Cuentas() {
@@ -276,6 +328,11 @@ function Cuentas() {
                     </div>
                     <div className="mt-0.5 text-sm text-stone-600">Usuario: <code className="rounded bg-stone-100 px-1">{c.usuario}</code></div>
                     <div className="mt-1 text-xs text-stone-500">{QUE_PUEDE[c.rol ?? '']}</div>
+                    {c.datos && (
+                      <div className={`mt-1 text-xs ${c.datos.completos === c.datos.total ? 'text-green-800' : 'text-amber-800'}`}>
+                        Datos personales para documentos: {c.datos.completos} de {c.datos.total} completos (los ingresa {c.usuario} en Mi cuenta).
+                      </div>
+                    )}
                   </div>
                   <Boton chico variante="secundario" icono={Pencil} onClick={() => setEditando({ cuenta: c, nombre: c.nombre, password: '', repetida: '' })}>Editar</Boton>
                 </li>
@@ -332,20 +389,35 @@ function enlaceDe(e: EntradaRegistro): string | null {
 }
 
 function Registro() {
+  const { puede, usuario } = useSesion();
+  const todo = puede('administracion');
   const consulta = useDatos<EntradaRegistro[]>('/bitacora?limite=500');
   const [filtro, setFiltro] = useState('');
+  const [quien, setQuien] = useState('');
 
   return (
     <Carga consulta={consulta}>
       {(entradas) => {
         const presentes = [...new Set(entradas.map((e) => e.accion))];
-        const filtradas = entradas.filter((e) => !filtro || e.accion === filtro);
+        const personas = [...new Set(entradas.map((e) => e.cuenta ?? ''))];
+        const filtradas = entradas.filter((e) => (!filtro || e.accion === filtro) && (!quien || (e.cuenta ?? '') === quien));
         return (
+          <>
+          {!todo && (
+            <p className="mb-3 text-sm text-stone-600">
+              Aquí aparecen los cambios que hacen las cuentas de los dueños (ldiaz y pmercado): precios, plantillas, tablas de amortización,
+              pagos, tasas y datos personales.
+            </p>
+          )}
           <Tarjeta
             relleno={false}
-            titulo="Últimos cambios sensibles"
+            titulo={todo ? 'Últimos cambios sensibles' : 'Cambios hechos por los dueños'}
             acciones={
               <>
+                <Selector value={quien} onChange={(e) => setQuien(e.target.value)} className="!w-auto !py-1 !text-xs" aria-label="Quién">
+                  <option value="">Todas las personas</option>
+                  {personas.map((c) => <option key={c} value={c}>{c === usuario?.usuario ? `Solo los míos (${c})` : c || 'Consola'}</option>)}
+                </Selector>
                 <Selector value={filtro} onChange={(e) => setFiltro(e.target.value)} className="!w-auto !py-1 !text-xs" aria-label="Tipo de cambio">
                   <option value="">Todos los tipos</option>
                   {presentes.map((a) => <option key={a} value={a}>{ACCIONES_REGISTRO[a] ?? a}</option>)}
@@ -378,7 +450,7 @@ function Registro() {
                     return (
                       <tr key={e.id} className="align-top">
                         <td className={`${td} whitespace-nowrap tabular-nums`}>{fechaHoraRegistro(e.fecha)}</td>
-                        <td className={`${td} whitespace-nowrap`}>{e.usuario ?? <span className="text-stone-500">Consola</span>}</td>
+                        <td className={`${td} whitespace-nowrap`}>{e.usuario ?? <span className="text-stone-500">{e.accion === 'cobranza_enviada' ? 'Sistema (programado)' : 'Consola'}</span>}</td>
                         <td className={td}>
                           {enlace ? <Link to={enlace} className="font-medium text-marca-700 hover:underline">{ACCIONES_REGISTRO[e.accion] ?? e.accion}</Link> : <span className="font-medium">{ACCIONES_REGISTRO[e.accion] ?? e.accion}</span>}
                           <div className="mt-0.5 text-xs text-stone-600 md:hidden">{e.detalle}</div>
@@ -395,6 +467,7 @@ function Registro() {
               </Tabla>
             )}
           </Tarjeta>
+          </>
         );
       }}
     </Carga>
@@ -404,7 +477,7 @@ function Registro() {
 // ---------- Mi cuenta (todas) ----------
 
 function MiCuenta() {
-  const { usuario, salir } = useSesion();
+  const { usuario, salir, puede } = useSesion();
   const avisos = useAvisos();
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
@@ -429,8 +502,10 @@ function MiCuenta() {
     }
   }
 
-  return (
-    <div className="max-w-md space-y-4">
+  const conDatos = puede('datos_personales');
+  const columna = (
+    <div className="space-y-4">
+      {puede('avisos_visitas') && <AvisosEnEsteEquipo />}
       <Tarjeta titulo="Mi cuenta">
         <div className="text-sm font-medium text-stone-900">{usuario?.nombre}</div>
         <div className="text-sm text-stone-600">Usuario: <code className="rounded bg-stone-100 px-1">{usuario?.usuario}</code></div>
@@ -447,5 +522,176 @@ function MiCuenta() {
         </form>
       </Tarjeta>
     </div>
+  );
+
+  if (!conDatos) return <div className="max-w-md">{columna}</div>;
+  return (
+    <div className="grid max-w-5xl items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      {columna}
+      <MisDatosPersonales />
+    </div>
+  );
+}
+
+// ---------- Avisos push en este equipo ----------
+
+function AvisosEnEsteEquipo() {
+  const avisos = useAvisos();
+  const equipos = useDatos<{ id: number; equipo: string; creada_en: string; ultimo_envio: string | null }[]>('/push/suscripciones');
+  const [estado, setEstado] = useState<EstadoPush | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => { estadoPush().then(setEstado).catch(() => setEstado('no_soportado')); }, []);
+
+  async function cambiar(activar: boolean) {
+    setOcupado(true);
+    try {
+      const e = activar ? await activarPush() : await desactivarPush();
+      setEstado(e);
+      if (activar && e === 'bloqueado') avisos.error('El navegador bloqueó los avisos: permítalos en los permisos del sitio (el candado junto a la dirección).');
+      else if (activar && e === 'activo') avisos.ok('Avisos activados en este equipo');
+      else if (!activar) avisos.ok('Este equipo ya no recibirá avisos');
+      equipos.recargar();
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function probar() {
+    setOcupado(true);
+    try {
+      const r = await api.post<{ enviados: number }>('/push/prueba');
+      if (r.enviados) avisos.ok(`Aviso de prueba enviado a ${r.enviados === 1 ? 'su equipo' : `sus ${r.enviados} equipos`}: debería aparecer en unos segundos.`);
+      else avisos.error('No se pudo entregar el aviso: active los avisos de nuevo en este equipo.');
+      equipos.recargar();
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <Tarjeta titulo={<span className="flex items-center gap-2"><BellRing className="size-4" /> Avisos en este equipo</span>}>
+      <p className="text-sm text-stone-600">
+        Reciba los avisos de visitas y ventas como notificación del computador o del celular, aunque el sistema esté cerrado.
+        Se activan en cada equipo por separado.
+      </p>
+      <div className="mt-3 text-sm">
+        {estado === 'activo' && <p className="font-medium text-green-800">Activados en este equipo.</p>}
+        {estado === 'inactivo' && <p className="text-stone-700">Desactivados en este equipo.</p>}
+        {estado === 'bloqueado' && <p className="text-amber-800">El navegador los bloqueó: permítalos en los permisos del sitio (el candado junto a la dirección) y vuelva a intentar.</p>}
+        {(estado === 'no_soportado' || estado === 'requiere_app') && <p className="text-amber-800">{motivoSinPush()}</p>}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(estado === 'inactivo' || estado === 'bloqueado') && <Boton chico icono={BellRing} cargando={ocupado} onClick={() => cambiar(true)}>Activar avisos</Boton>}
+        {estado === 'activo' && (
+          <>
+            <Boton chico variante="secundario" cargando={ocupado} onClick={probar}>Enviar aviso de prueba</Boton>
+            <Boton chico variante="fantasma" disabled={ocupado} onClick={() => cambiar(false)}>Desactivar</Boton>
+          </>
+        )}
+      </div>
+      {(equipos.datos?.length ?? 0) > 0 && (
+        <p className="mt-3 text-xs text-stone-500">
+          Equipos con avisos activos: {equipos.datos!.map((e) => e.equipo || 'equipo').join(', ')}.
+        </p>
+      )}
+    </Tarjeta>
+  );
+}
+
+// ---------- Datos personales de los dueños (para los documentos legales) ----------
+
+const ETIQUETAS_PERSONALES: Record<keyof DatosPersonales, string> = {
+  nombre_completo: 'Nombre completo', rut: 'RUT', nacionalidad: 'Nacionalidad', estado_civil: 'Estado civil', profesion: 'Profesión u oficio',
+  cargo: 'Cargo en la empresa', direccion: 'Domicilio', comuna: 'Comuna', ciudad: 'Ciudad', telefono: 'Teléfono', email: 'Correo electrónico',
+};
+const ESTADOS_CIVILES = ['soltero', 'soltera', 'casado', 'casada', 'conviviente civil', 'divorciado', 'divorciada', 'viudo', 'viuda', 'separado', 'separada'];
+
+function MisDatosPersonales() {
+  const consulta = useDatos<DatosPersonales>('/auth/datos-personales');
+  return <Carga consulta={consulta}>{(d) => <FormularioDatosPersonales guardados={d} alGuardar={consulta.recargar} />}</Carga>;
+}
+
+function FormularioDatosPersonales({ guardados, alGuardar }: { guardados: DatosPersonales; alGuardar: () => void }) {
+  const { usuario, recargarConfig } = useSesion();
+  const config = useConfig();
+  const avisos = useAvisos();
+  const idLista = useId();
+  const inicial = { ...guardados, rut: formatearRut(guardados.rut) };
+  const [d, setD] = useState(inicial);
+  const [guardando, setGuardando] = useState(false);
+  const cambios = listarCambios(inicial, d, ETIQUETAS_PERSONALES);
+  const prefijo = usuario?.rol === 'abogado' ? 'abogado' : 'contador';
+  const esRepresentante = config.empresa.representante_cuenta === usuario?.usuario;
+
+  async function guardar(e: FormEvent) {
+    e.preventDefault();
+    if (!cambios.length) return;
+    if (d.rut && !rutValido(d.rut)) return avisos.error('El RUT no es válido: revise el dígito verificador');
+    const errTel = errorTelefono(d.telefono);
+    if (errTel) return avisos.error(errTel);
+    if (!correoValido(d.email)) return avisos.error('Revise el correo electrónico (ej.: nombre@dominio.cl)');
+    if (!(await avisos.confirmar({
+      titulo: 'Confirmar cambios en sus datos personales',
+      mensaje: (
+        <ListaCambios
+          cambios={cambios}
+          nota={`Se usarán en los documentos que se confeccionen desde ahora${esRepresentante ? ', incluida la comparecencia de las promesas, porque usted es el representante legal' : ''}. Los documentos ya emitidos no cambian.`}
+        />
+      ),
+      confirmar: 'Sí, guardar',
+    }))) return;
+    setGuardando(true);
+    try {
+      await api.put('/auth/datos-personales', d);
+      await recargarConfig();
+      avisos.ok('Datos personales guardados');
+      alGuardar();
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const campo = (k: keyof DatosPersonales, props: { className?: string; placeholder?: string; type?: string; list?: string; autoComplete?: string } = {}) => {
+    const { className, ...resto } = props;
+    return (
+      <Campo etiqueta={ETIQUETAS_PERSONALES[k]} className={className}>
+        <Entrada maxLength={k === 'direccion' ? 200 : 120} value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} {...resto} />
+      </Campo>
+    );
+  };
+
+  return (
+    <form onSubmit={guardar} className="space-y-4">
+      <Tarjeta titulo={<span className="flex items-center gap-2"><UserRound className="size-4" /> Mis datos personales</span>}>
+        <p className="mb-3 text-sm text-stone-600">
+          Se usan para completar solos los documentos legales: en las plantillas son los datos {`{{${prefijo}.nombre}}`}, {`{{${prefijo}.rut}}`}, etc.
+          {esRepresentante
+            ? ' Además, la empresa lo designó representante legal: estos datos completan la comparecencia y la firma de las promesas de compraventa.'
+            : ' Si la empresa lo designa representante legal, también completarán la comparecencia de las promesas.'}
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {campo('nombre_completo', { className: 'sm:col-span-2', placeholder: 'Nombres y apellidos, como en la cédula de identidad', autoComplete: 'name' })}
+          <Campo etiqueta={ETIQUETAS_PERSONALES.rut}><EntradaRut valor={d.rut} alCambiar={(v) => setD({ ...d, rut: v })} /></Campo>
+          {campo('nacionalidad', { placeholder: 'chilena' })}
+          {campo('estado_civil', { list: idLista })}
+          {campo('profesion')}
+          {campo('cargo', { placeholder: 'Ej.: socio, gerente general' })}
+          <Campo etiqueta={ETIQUETAS_PERSONALES.telefono}><EntradaTelefono valor={d.telefono} alCambiar={(v) => setD({ ...d, telefono: v })} /></Campo>
+          {campo('direccion', { className: 'sm:col-span-2', placeholder: 'Calle, número, depto.', autoComplete: 'street-address' })}
+          {campo('comuna')}
+          {campo('ciudad')}
+          {campo('email', { type: 'email', className: 'sm:col-span-2', autoComplete: 'email' })}
+        </div>
+        <datalist id={idLista}>{ESTADOS_CIVILES.map((x) => <option key={x} value={x} />)}</datalist>
+      </Tarjeta>
+      <BarraGuardar cambios={cambios.length} guardando={guardando} alDescartar={() => setD(inicial)} />
+    </form>
   );
 }

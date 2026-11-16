@@ -11,8 +11,7 @@ import { descargarCsv, numero, pesos, plural, precioLista } from '../formato';
 import { ListaCambios, listarCambios } from '../componentes/Cambios';
 import type { EstadoParcela, Parcela, Plano, Punto, ResumenLoteo } from '../tipos';
 import {
-  AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, Entrada, EntradaMonto, ESTADOS_PARCELA, InsigniaParcela, Modal,
-  Par, Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th,
+  AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, Entrada, EntradaMonto, ESTADOS_PARCELA, InsigniaParcela, Modal, Par, Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th, EntradaDecimal,
 } from '../ui';
 
 const ESTADOS: EstadoParcela[] = ['disponible', 'reservada', 'vendida', 'bloqueada'];
@@ -57,7 +56,7 @@ function FormularioParcela({ inicial, alCerrar, alGuardar }: { inicial: Borrador
     // Al editar una parcela existente se confirma lo que cambia (sobre todo el precio de lista).
     if (b.id) {
       const cambios = listarCambios(inicial, b, {
-        numero: 'Número', sector: 'Sector', superficie_m2: 'Superficie (m²)', precio: 'Precio de lista', estado: 'Estado',
+        numero: 'Número', sector: 'Manzana', superficie_m2: 'Superficie (m²)', precio: 'Precio de lista', estado: 'Estado',
         rol_sii: 'Rol de avalúo', deslindes: 'Deslindes', descripcion: 'Descripción',
       }, {
         precio: (v) => pesos(Number(v)),
@@ -113,11 +112,11 @@ function FormularioParcela({ inicial, alCerrar, alGuardar }: { inicial: Borrador
         <Campo etiqueta="Número o código">
           <Entrada required maxLength={20} value={b.numero} onChange={(e) => cambiar('numero', e.target.value)} autoFocus={!b.id} />
         </Campo>
-        <Campo etiqueta="Sector o etapa">
+        <Campo etiqueta="Manzana">
           <Entrada maxLength={80} value={b.sector} onChange={(e) => cambiar('sector', e.target.value)} />
         </Campo>
         <Campo etiqueta="Superficie (m²)">
-          <Entrada type="number" inputMode="decimal" min={0} step="any" required value={b.superficie_m2} onChange={(e) => cambiar('superficie_m2', e.target.value)} />
+          <EntradaDecimal required valor={b.superficie_m2} alCambiar={(v) => cambiar('superficie_m2', v)} />
         </Campo>
         <Campo etiqueta="Precio de lista">
           <EntradaMonto required valor={b.precio} alCambiar={(v) => cambiar('precio', v)} />
@@ -127,8 +126,8 @@ function FormularioParcela({ inicial, alCerrar, alGuardar }: { inicial: Borrador
             {ESTADOS.map((e) => <option key={e} value={e}>{ESTADOS_PARCELA[e].etiqueta}</option>)}
           </Selector>
         </Campo>
-        <Campo etiqueta="Rol de avalúo (SII)">
-          <Entrada maxLength={40} value={b.rol_sii} onChange={(e) => cambiar('rol_sii', e.target.value)} />
+        <Campo etiqueta="Rol de avalúo (SII)" ayuda={b.rol_sii && !/^\d{1,6}-\d{1,4}$/.test(b.rol_sii) ? <span className="text-red-700">Formato: número-número, ej.: 1234-56</span> : undefined}>
+          <Entrada inputMode="numeric" maxLength={11} placeholder="1234-56" value={b.rol_sii} onChange={(e) => cambiar('rol_sii', e.target.value.replace(/[^\d-]/g, ''))} />
         </Campo>
         <Campo etiqueta="Deslindes" ayuda="Se insertan en la promesa de compraventa." className="col-span-2">
           <AreaTexto value={b.deslindes} onChange={(e) => cambiar('deslindes', e.target.value)} placeholder="Norte: …; Sur: …; Oriente: …; Poniente: …" />
@@ -141,10 +140,67 @@ function FormularioParcela({ inicial, alCerrar, alGuardar }: { inicial: Borrador
   );
 }
 
+// ---------- Cambio de precio (dueños y super administrador) ----------
+
+function CambioPrecio({ p, alCerrar, alGuardar }: { p: Parcela; alCerrar: () => void; alGuardar: () => void }) {
+  const avisos = useAvisos();
+  const idForm = useId();
+  const [precio, setPrecio] = useState<number | null>(p.precio || null);
+  const [guardando, setGuardando] = useState(false);
+
+  async function guardar(e: FormEvent) {
+    e.preventDefault();
+    if (precio === null || precio === p.precio) return alCerrar();
+    if (!(await avisos.confirmar({
+      titulo: `¿Cambiar el precio de la parcela ${p.numero}?`,
+      mensaje: <ListaCambios cambios={[{ etiqueta: 'Precio de lista', antes: precioLista(p.precio), despues: pesos(precio) }]} nota="Las cotizaciones y ventas ya registradas conservan su precio. El cambio queda en el registro de cambios." />,
+      confirmar: 'Cambiar precio',
+    }))) return;
+    setGuardando(true);
+    try {
+      await api.put(`/parcelas/${p.id}/precio`, { precio });
+      avisos.ok(`Precio de la parcela ${p.numero} actualizado`);
+      alGuardar();
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal
+      abierto
+      alCerrar={alCerrar}
+      titulo={`Precio de la parcela ${p.numero}`}
+      ancho="sm"
+      pie={
+        <>
+          <Boton variante="secundario" onClick={alCerrar}>Cancelar</Boton>
+          <Boton type="submit" form={idForm} cargando={guardando} disabled={precio === null || precio === p.precio}>Revisar y guardar</Boton>
+        </>
+      }
+    >
+      <form id={idForm} onSubmit={guardar} className="space-y-3">
+        <p className="text-sm text-stone-600">
+          {p.sector} · {numero(p.superficie_m2)} m² · precio actual: <strong>{precioLista(p.precio)}</strong>
+        </p>
+        <Campo etiqueta="Nuevo precio de lista" ayuda={precio && p.superficie_m2 > 0 ? `Equivale a ${pesos(precio / p.superficie_m2)} por m².` : undefined}>
+          <EntradaMonto required valor={precio} alCambiar={setPrecio} autoFocus />
+        </Campo>
+      </form>
+    </Modal>
+  );
+}
+
 // ---------- Detalle de la parcela seleccionada ----------
 
 function DetalleParcela({ p, alEditar, alCambiar, alCerrar }: { p: Parcela; alEditar: () => void; alCambiar: () => void; alCerrar: () => void }) {
-  const esAdmin = useSesion().puede('parcelas');
+  const { puede } = useSesion();
+  const esAdmin = puede('parcelas');
+  const cambiaPrecio = puede('precios');
+  const opera = puede('operaciones');
+  const [enPrecio, setEnPrecio] = useState(false);
   const { plano } = useConfig();
   const avisos = useAvisos();
   const enVenta = p.estado === 'disponible' || p.estado === 'reservada';
@@ -166,18 +222,19 @@ function DetalleParcela({ p, alEditar, alCambiar, alCerrar }: { p: Parcela; alEd
       acciones={
         <>
           {esAdmin && <Boton variante="fantasma" chico icono={Pencil} onClick={alEditar}>Editar</Boton>}
+          {!esAdmin && cambiaPrecio && <Boton variante="fantasma" chico icono={Pencil} onClick={() => setEnPrecio(true)}>Cambiar precio</Boton>}
           <button onClick={alCerrar} aria-label="Cerrar detalle" className="rounded-lg p-1.5 text-stone-500 hover:bg-stone-100"><X className="size-4" /></button>
         </>
       }
     >
       <div className={`text-2xl font-semibold tracking-tight ${p.precio > 0 ? 'text-stone-900' : 'text-stone-400'}`}>{precioLista(p.precio)}</div>
-      {p.precio === 0 && esAdmin && (
-        <p className="mt-1 text-xs text-stone-500">Fíjelo con “Editar” o, para varias a la vez, con “Cambios en bloque” en la lista de precios.</p>
+      {p.precio === 0 && cambiaPrecio && (
+        <p className="mt-1 text-xs text-stone-500">Fíjelo con “{esAdmin ? 'Editar' : 'Cambiar precio'}” o, para varias a la vez, con “Cambios en bloque” en la lista de precios.</p>
       )}
       <dl className="mt-3 grid grid-cols-2 gap-3">
         <Par etiqueta="Superficie">{numero(p.superficie_m2)} m²</Par>
         <Par etiqueta="Valor por m²">{p.superficie_m2 > 0 && p.precio > 0 ? pesos(p.precio / p.superficie_m2) : '—'}</Par>
-        <Par etiqueta="Sector">{p.sector}</Par>
+        <Par etiqueta="Manzana">{p.sector}</Par>
         <Par etiqueta="Rol de avalúo">{p.rol_sii}</Par>
       </dl>
       {p.descripcion && <p className="mt-3 text-sm text-stone-600">{p.descripcion}</p>}
@@ -200,16 +257,19 @@ function DetalleParcela({ p, alEditar, alCambiar, alCerrar }: { p: Parcela; alEd
       <div className="mt-4 flex flex-wrap gap-2">
         {enVenta && (
           <>
-            <EnlaceBoton chico icono={Calculator} to={`/cotizaciones/nueva?parcela=${p.id}`}>Cotizar</EnlaceBoton>
-            <EnlaceBoton chico variante="secundario" icono={HandCoins} to={`/ventas/nueva?parcela=${p.id}`}>Vender</EnlaceBoton>
-            <EnlaceBoton chico variante="secundario" icono={CalendarPlus} to={`/visitas?nueva=1&parcela=${p.id}`}>Agendar visita</EnlaceBoton>
-            <Boton chico variante="secundario" onClick={() => cambiarEstado(p.estado === 'disponible' ? 'reservada' : 'disponible')}>
-              {p.estado === 'disponible' ? 'Reservar' : 'Quitar reserva'}
-            </Boton>
+            {puede('cotizaciones') && <EnlaceBoton chico icono={Calculator} to={`/cotizaciones/nueva?parcela=${p.id}`}>Cotizar</EnlaceBoton>}
+            {opera && <EnlaceBoton chico variante="secundario" icono={HandCoins} to={`/ventas/nueva?parcela=${p.id}`}>Vender</EnlaceBoton>}
+            <EnlaceBoton chico variante={puede('cotizaciones') ? 'secundario' : 'primario'} icono={CalendarPlus} to={`/visitas?nueva=1&parcela=${p.id}`}>Agendar visita</EnlaceBoton>
+            {opera && (
+              <Boton chico variante="secundario" onClick={() => cambiarEstado(p.estado === 'disponible' ? 'reservada' : 'disponible')}>
+                {p.estado === 'disponible' ? 'Reservar' : 'Quitar reserva'}
+              </Boton>
+            )}
           </>
         )}
         {p.venta_id && <EnlaceBoton chico variante="secundario" to={`/ventas/${p.venta_id}`}>Ver venta</EnlaceBoton>}
       </div>
+      {enPrecio && <CambioPrecio p={p} alCerrar={() => setEnPrecio(false)} alGuardar={() => { setEnPrecio(false); alCambiar(); }} />}
     </Tarjeta>
   );
 }
@@ -235,7 +295,7 @@ function useCargaLoteo(alTerminar: () => void) {
       mensaje: (
         <div className="space-y-2">
           <p>
-            Plano «{r.fuente.dwg}»: {r.lotes} lotes ({hectareas} ha) en {r.sectores.length} sectores —{' '}
+            Plano «{r.fuente.dwg}»: {r.lotes} lotes ({hectareas} ha) en {r.sectores.length} manzanas —{' '}
             {r.sectores.map((x) => `${x.letra} (${x.lotes})`).join(', ')}.
           </p>
           <ul className="list-disc space-y-1 pl-5">
@@ -392,12 +452,13 @@ function EdicionMapa({ parcelas, plano, elegida, alElegir, trazo, setTrazo, alCa
   );
 }
 
-// ---------- Cambios en bloque (precio de lista, sector) ----------
+// ---------- Cambios en bloque (precio de lista, manzana) ----------
 
 type AccionBloque = 'precio_m2' | 'precio' | 'sector';
 
 function CambiosEnBloque({ parcelas, alCerrar, alGuardar }: { parcelas: Parcela[]; alCerrar: () => void; alGuardar: () => void }) {
   const avisos = useAvisos();
+  const conSector = useSesion().puede('parcelas');
   const sectores = [...new Set(parcelas.map((p) => p.sector))];
   const [accion, setAccion] = useState<AccionBloque>('precio_m2');
   const [monto, setMonto] = useState<number | null>(null);
@@ -417,13 +478,13 @@ function CambiosEnBloque({ parcelas, alCerrar, alGuardar }: { parcelas: Parcela[
   const filas = afectadas.map((p) => ({ antes: p, despues: nuevo(p) }))
     .filter(({ antes, despues }) => antes.precio !== despues.precio || antes.sector !== despues.sector || antes.numero !== despues.numero);
   const listo = accion === 'sector' ? !!sector.trim() : !!monto;
-  const describe = (p: Parcela) => (accion === 'sector' ? `${p.numero} · ${p.sector || 'sin sector'}` : precioLista(p.precio));
+  const describe = (p: Parcela) => (accion === 'sector' ? `${p.numero} · ${p.sector || 'sin manzana'}` : precioLista(p.precio));
 
   async function aplicar() {
     if (!listo || filas.length === 0) return;
     const total = filas.reduce((s, f) => s + f.despues.precio, 0);
     if (!(await avisos.confirmar({
-      titulo: accion === 'sector' ? `¿Cambiar el sector de ${plural(filas.length, 'parcela')}?` : `¿Cambiar el precio de lista de ${plural(filas.length, 'parcela')}?`,
+      titulo: accion === 'sector' ? `¿Cambiar la manzana de ${plural(filas.length, 'parcela')}?` : `¿Cambiar el precio de lista de ${plural(filas.length, 'parcela')}?`,
       mensaje: (
         <div className="space-y-2">
           <ul className="space-y-0.5 text-sm">
@@ -469,20 +530,23 @@ function CambiosEnBloque({ parcelas, alCerrar, alGuardar }: { parcelas: Parcela[
       <div className="space-y-3">
         <p className="text-sm text-stone-600">
           Se aplica a las parcelas que muestra la lista con los filtros actuales
-          {sectores.length === 1 ? ` (${sectores[0] || 'sin sector'})` : ''}.
+          {sectores.length === 1 ? ` (${sectores[0] || 'sin manzana'})` : ''}.
         </p>
         <Pestanas
-          opciones={[{ id: 'precio_m2', etiqueta: 'Precio por m²' }, { id: 'precio', etiqueta: 'Precio fijo' }, { id: 'sector', etiqueta: 'Sector y código' }]}
+          opciones={[
+            { id: 'precio_m2', etiqueta: 'Precio por m²' }, { id: 'precio', etiqueta: 'Precio fijo' },
+            ...(conSector ? [{ id: 'sector', etiqueta: 'Manzana y código' }] : []),
+          ]}
           activa={accion}
           alCambiar={(a) => setAccion(a as AccionBloque)}
         />
         {accion === 'sector' ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Campo etiqueta="Nombre del sector">
-              <Entrada maxLength={80} value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Ej.: Sitio 17" />
+            <Campo etiqueta="Nombre de la manzana">
+              <Entrada maxLength={80} value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Ej.: Manzana 17" />
             </Campo>
             <Campo etiqueta="Prefijo del código (opcional)" ayuda={pref ? `“${parcelas[0]?.numero}” pasará a “${nuevo(parcelas[0]).numero}”.` : 'Vacío: los códigos no cambian.'}>
-              <Entrada maxLength={10} value={prefijo} onChange={(e) => setPrefijo(e.target.value.replace(/[^\p{L}\p{N}-]/gu, ''))} placeholder="Ej.: S17" />
+              <Entrada maxLength={10} value={prefijo} onChange={(e) => setPrefijo(e.target.value.replace(/[^\p{L}\p{N}-]/gu, ''))} placeholder="Ej.: M17" />
             </Campo>
           </div>
         ) : (
@@ -509,7 +573,10 @@ function CambiosEnBloque({ parcelas, alCerrar, alGuardar }: { parcelas: Parcela[
 // ---------- Página ----------
 
 export function Parcelas() {
-  const esAdmin = useSesion().puede('parcelas');
+  const { puede } = useSesion();
+  const esAdmin = puede('parcelas');
+  const puedePrecios = puede('precios');
+  const [precioDe, setPrecioDe] = useState<Parcela | null>(null);
   const config = useConfig();
   const navegar = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -562,11 +629,11 @@ export function Parcelas() {
       ))}
       {sectores.length > 1 && (
         <Selector
-          aria-label="Filtrar por sector" value={sector ?? '*'} onChange={(e) => setSector(e.target.value === '*' ? null : e.target.value)}
+          aria-label="Filtrar por manzana" value={sector ?? '*'} onChange={(e) => setSector(e.target.value === '*' ? null : e.target.value)}
           className="!w-auto !rounded-full !py-1 !text-xs"
         >
-          <option value="*">Todos los sectores</option>
-          {sectores.map((x) => <option key={x} value={x}>{x || 'Sin sector'} ({parcelas.filter((p) => p.sector === x).length})</option>)}
+          <option value="*">Todas las manzanas</option>
+          {sectores.map((x) => <option key={x} value={x}>{x || 'Sin manzana'} ({parcelas.filter((p) => p.sector === x).length})</option>)}
         </Selector>
       )}
     </div>
@@ -575,7 +642,7 @@ export function Parcelas() {
   function exportar() {
     descargarCsv(
       'parcelas.csv',
-      ['Parcela', 'Sector', 'Superficie m2', 'Precio', 'Estado', 'Comprador'],
+      ['Parcela', 'Manzana', 'Superficie m2', 'Precio', 'Estado', 'Comprador'],
       filtradas.map((p) => [p.numero, p.sector, p.superficie_m2, p.precio || '', ESTADOS_PARCELA[p.estado].etiqueta, p.cliente]),
     );
   }
@@ -662,9 +729,9 @@ export function Parcelas() {
           ) : (
             <Tarjeta relleno={false}>
               <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 p-3">
-                <Buscador valor={busqueda} alCambiar={setBusqueda} placeholder="Buscar por número, sector o comprador" className="min-w-56 flex-1" />
+                <Buscador valor={busqueda} alCambiar={setBusqueda} placeholder="Buscar por número, manzana o comprador" className="min-w-56 flex-1" />
                 {filtros}
-                {esAdmin && filtradas.length > 0 && <Boton chico variante="secundario" icono={FileStack} onClick={() => setEnBloque(true)}>Cambios en bloque</Boton>}
+                {puedePrecios && filtradas.length > 0 && <Boton chico variante="secundario" icono={FileStack} onClick={() => setEnBloque(true)}>Cambios en bloque</Boton>}
                 <Boton chico variante="secundario" icono={Download} onClick={exportar}>Excel</Boton>
               </div>
               {filtradas.length === 0 ? (
@@ -675,7 +742,7 @@ export function Parcelas() {
                   <thead>
                     <tr>
                       <th className={th}>Parcela</th>
-                      <th className={`${th} hidden sm:table-cell`}>Sector</th>
+                      <th className={`${th} hidden sm:table-cell`}>Manzana</th>
                       <th className={`${th} ${num} hidden sm:table-cell`}>Superficie</th>
                       <th className={`${th} ${num}`}>Precio</th>
                       <th className={`${th} ${num} hidden md:table-cell`}>Valor m²</th>
@@ -700,10 +767,11 @@ export function Parcelas() {
                           {p.venta_id ? <Link to={`/ventas/${p.venta_id}`} className="text-marca-700 hover:underline">{p.cliente}</Link> : '—'}
                         </td>
                         <td className={`${td} whitespace-nowrap text-right`}>
-                          {(p.estado === 'disponible' || p.estado === 'reservada') && (
+                          {puede('cotizaciones') && (p.estado === 'disponible' || p.estado === 'reservada') && (
                             <Boton chico variante="fantasma" icono={Calculator} onClick={() => navegar(`/cotizaciones/nueva?parcela=${p.id}`)}>Cotizar</Boton>
                           )}
                           {esAdmin && <Boton chico variante="fantasma" icono={Pencil} aria-label={`Editar parcela ${p.numero}`} onClick={() => setEditando(borradorDe(p))} />}
+                          {!esAdmin && puedePrecios && <Boton chico variante="fantasma" icono={Pencil} aria-label={`Cambiar precio de la parcela ${p.numero}`} title="Cambiar precio" onClick={() => setPrecioDe(p)} />}
                         </td>
                       </tr>
                     ))}
@@ -719,6 +787,8 @@ export function Parcelas() {
           )
         }
       </Carga>
+
+      {precioDe && <CambioPrecio p={precioDe} alCerrar={() => setPrecioDe(null)} alGuardar={() => { setPrecioDe(null); consulta.recargar(); }} />}
 
       {enBloque && (
         <CambiosEnBloque parcelas={filtradas} alCerrar={() => setEnBloque(false)} alGuardar={() => { setEnBloque(false); consulta.recargar(); }} />

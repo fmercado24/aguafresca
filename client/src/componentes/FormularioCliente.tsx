@@ -2,9 +2,10 @@ import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { UserPlus, X } from 'lucide-react';
 import { api } from '../api';
 import { useAvisos } from '../contexto';
-import { formatearRut, rutValido } from '../formato';
+import { correoValido, errorTelefono, formatearRut, rutValido } from '../formato';
 import type { Cliente, ClienteResumen } from '../tipos';
-import { AreaTexto, Boton, Buscador, Campo, Entrada, EntradaMonto, Modal, Selector } from '../ui';
+import { AreaTexto, Boton, Buscador, Campo, Entrada, EntradaMonto, EntradaRut, EntradaTelefono, Modal, Selector } from '../ui';
+import { useConfig } from '../contexto';
 
 type Datos = Omit<Cliente, 'id' | 'creado_en'>;
 
@@ -25,14 +26,24 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
   );
 }
 
-/** Alta o edición de un cliente con todos sus antecedentes. */
-export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
+/** Campos que se pueden completar en modo "datos esenciales" (los que piden las promesas y cartas). */
+const ESENCIALES = ['nombre', 'rut', 'fecha_nacimiento', 'nacionalidad', 'estado_civil', 'profesion', 'direccion', 'comuna', 'ciudad', 'region', 'telefono', 'email'] as const;
+
+/**
+ * Alta o edición de un cliente con todos sus antecedentes. Con `esencial`, solo identificación y domicilio:
+ * así el abogado completa lo que necesita un documento sin tocar los antecedentes financieros.
+ */
+export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar, esencial = false, faltan }: {
   cliente?: Cliente;
   inicial?: Partial<Datos>;
   alCerrar: () => void;
   alGuardar: (id: number) => void;
+  esencial?: boolean;
+  /** Datos que pide el documento y faltan (se destacan arriba). */
+  faltan?: string[];
 }) {
   const avisos = useAvisos();
+  const { hoy } = useConfig();
   const idForm = useId();
   const [d, setD] = useState<Datos>(() => {
     if (!cliente) return { ...VACIO, ...inicial };
@@ -48,10 +59,17 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
   async function guardar(e: FormEvent) {
     e.preventDefault();
     if (rutMalo(d.rut) || rutMalo(d.aval_rut)) return avisos.error('Revise el RUT: el dígito verificador no coincide');
+    const errTel = errorTelefono(d.telefono, true) ?? errorTelefono(d.aval_telefono);
+    if (errTel) return avisos.error(errTel);
+    if (!correoValido(d.email)) return avisos.error('Revise el correo electrónico (ej.: nombre@dominio.cl)');
     setGuardando(true);
     try {
       const cuerpo = { ...d, fecha_nacimiento: d.fecha_nacimiento || null };
-      if (cliente) {
+      if (cliente && esencial) {
+        await api.put(`/clientes/${cliente.id}/esenciales`, Object.fromEntries(ESENCIALES.map((k) => [k, cuerpo[k]])));
+        avisos.ok('Datos del cliente actualizados');
+        alGuardar(cliente.id);
+      } else if (cliente) {
         await api.put(`/clientes/${cliente.id}`, cuerpo);
         avisos.ok('Ficha actualizada');
         alGuardar(cliente.id);
@@ -72,7 +90,7 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
       abierto
       alCerrar={alCerrar}
       ancho="lg"
-      titulo={cliente ? 'Editar ficha del cliente' : 'Nuevo cliente'}
+      titulo={esencial ? `Datos esenciales de ${cliente?.nombre ?? 'el cliente'}` : cliente ? 'Editar ficha del cliente' : 'Nuevo cliente'}
       pie={
         <>
           <Boton variante="secundario" onClick={alCerrar}>Cancelar</Boton>
@@ -81,12 +99,20 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
       }
     >
       <form id={idForm} onSubmit={guardar}>
+        {esencial && (
+          <p className="mb-4 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
+            Identificación y domicilio, para los documentos legales.{faltan?.length ? <> Faltan para este documento: <strong>{faltan.join(', ')}</strong>.</> : ''}
+            {' '}Los antecedentes laborales y financieros los completa el contador.
+          </p>
+        )}
         <Seccion titulo="Identificación">
           <Campo etiqueta="Nombre completo" className="col-span-2">{texto('nombre', { required: true, maxLength: 160 })}</Campo>
-          <Campo etiqueta="RUT" ayuda={rutMalo(d.rut) ? <span className="text-red-700">RUT inválido</span> : undefined}>
-            <Entrada value={d.rut} onChange={(e) => setD((x) => ({ ...x, rut: e.target.value }))} onBlur={() => rutValido(d.rut) && setD((x) => ({ ...x, rut: formatearRut(x.rut) }))} placeholder="12.345.678-9" maxLength={15} />
+          <Campo etiqueta="RUT">
+            <EntradaRut valor={d.rut} alCambiar={(v) => setD((x) => ({ ...x, rut: v }))} />
           </Campo>
-          <Campo etiqueta="Fecha de nacimiento">{texto('fecha_nacimiento', { type: 'date' })}</Campo>
+          <Campo etiqueta="Fecha de nacimiento">
+            <Entrada type="date" min="1900-01-01" max={hoy} value={d.fecha_nacimiento ?? ''} onChange={(e) => setD((x) => ({ ...x, fecha_nacimiento: e.target.value || null }))} />
+          </Campo>
           <Campo etiqueta="Nacionalidad">{texto('nacionalidad', { maxLength: 60 })}</Campo>
           <Campo etiqueta="Estado civil">
             <Selector value={d.estado_civil} onChange={(e) => setD((x) => ({ ...x, estado_civil: e.target.value }))}>
@@ -98,14 +124,19 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
         </Seccion>
 
         <Seccion titulo="Contacto y domicilio">
-          <Campo etiqueta="Teléfono">{texto('telefono', { type: 'tel', maxLength: 40, placeholder: '+56 9 …' })}</Campo>
-          <Campo etiqueta="Correo electrónico">{texto('email', { type: 'email', maxLength: 160 })}</Campo>
+          <Campo etiqueta="Celular">
+            <EntradaTelefono movil valor={d.telefono} alCambiar={(v) => setD((x) => ({ ...x, telefono: v }))} />
+          </Campo>
+          <Campo etiqueta="Correo electrónico" ayuda={!correoValido(d.email) ? <span className="text-red-700">Correo inválido (ej.: nombre@dominio.cl)</span> : undefined}>
+            {texto('email', { type: 'email', maxLength: 160, placeholder: 'nombre@dominio.cl' })}
+          </Campo>
           <Campo etiqueta="Dirección" className="col-span-2">{texto('direccion', { maxLength: 200 })}</Campo>
           <Campo etiqueta="Comuna">{texto('comuna', { maxLength: 80 })}</Campo>
           <Campo etiqueta="Ciudad">{texto('ciudad', { maxLength: 80 })}</Campo>
           <Campo etiqueta="Región" className="col-span-2">{texto('region', { maxLength: 80 })}</Campo>
         </Seccion>
 
+        {!esencial && (<>
         <Seccion titulo="Antecedentes laborales">
           <Campo etiqueta="Empleador o actividad">{texto('empleador', { maxLength: 160 })}</Campo>
           <Campo etiqueta="Cargo">{texto('cargo', { maxLength: 120 })}</Campo>
@@ -126,8 +157,8 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
 
         <Seccion titulo="Aval o codeudor (opcional)">
           <Campo etiqueta="Nombre">{texto('aval_nombre', { maxLength: 160 })}</Campo>
-          <Campo etiqueta="RUT" ayuda={rutMalo(d.aval_rut) ? <span className="text-red-700">RUT inválido</span> : undefined}>{texto('aval_rut', { maxLength: 15 })}</Campo>
-          <Campo etiqueta="Teléfono">{texto('aval_telefono', { type: 'tel', maxLength: 40 })}</Campo>
+          <Campo etiqueta="RUT"><EntradaRut valor={d.aval_rut} alCambiar={(v) => setD((x) => ({ ...x, aval_rut: v }))} /></Campo>
+          <Campo etiqueta="Teléfono"><EntradaTelefono valor={d.aval_telefono} alCambiar={(v) => setD((x) => ({ ...x, aval_telefono: v }))} /></Campo>
           <Campo etiqueta="Dirección">{texto('aval_direccion', { maxLength: 200 })}</Campo>
         </Seccion>
 
@@ -136,6 +167,7 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar }: {
             <AreaTexto value={d.observaciones} onChange={(e) => setD((x) => ({ ...x, observaciones: e.target.value }))} />
           </Campo>
         </Seccion>
+        </>)}
       </form>
     </Modal>
   );

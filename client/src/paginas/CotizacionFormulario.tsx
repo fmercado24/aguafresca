@@ -2,11 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig } from '../contexto';
-import { CamposCredito, ResumenSimulacion, useSimulacion, type Condiciones } from '../componentes/Credito';
+import { CamposCredito, ResumenSimulacion, useSimulacion, type Condiciones, plazoDe } from '../componentes/Credito';
 import { SelectorCliente } from '../componentes/FormularioCliente';
-import { formatearRut, numero, pesos, rutValido, sumarDias, sumarMeses, precioLista as textoPrecio } from '../formato';
+import { correoValido, errorTelefono, formatearRut, numero, pesos, rutValido, sumarDias, sumarMeses, precioLista as textoPrecio } from '../formato';
 import type { ClienteResumen, CotizacionDetalle, Parcela } from '../tipos';
-import { AreaTexto, Boton, Campo, Cargando, Encabezado, EnlaceBoton, Entrada, EntradaMonto, Selector, Tarjeta } from '../ui';
+import {
+  AreaTexto, Boton, Campo, Cargando, Encabezado, EnlaceBoton, Entrada, EntradaMonto, Selector, Tarjeta, EntradaRut, EntradaTelefono,
+} from '../ui';
 
 /** Alta y edición de una cotización, con simulación del crédito en vivo. */
 export function CotizacionFormulario() {
@@ -33,6 +35,8 @@ function Formulario({ id }: { id: number | null }) {
   const [descuento, setDescuento] = useState<number | null>(null);
   const [cond, setCond] = useState<Condiciones>({
     pie: null,
+    modo: 'cuotas',
+    cuota_objetivo: null,
     n_cuotas: String(config.credito.n_cuotas),
     tasa_mensual: String(config.credito.tasa_mensual),
     fecha_primera_cuota: sumarMeses(config.hoy, 1),
@@ -73,7 +77,7 @@ function Formulario({ id }: { id: number | null }) {
       setValidaHasta(q.valida_hasta);
       setPrecioLista(q.precio_lista);
       setDescuento(q.descuento || null);
-      setCond({ pie: q.pie, n_cuotas: String(q.n_cuotas || ''), tasa_mensual: String(q.tasa_mensual), fecha_primera_cuota: q.fecha_primera_cuota ?? '' });
+      setCond({ pie: q.pie, modo: q.cuota_objetivo ? 'monto' : 'cuotas', cuota_objetivo: q.cuota_objetivo ?? null, n_cuotas: String(q.n_cuotas || ''), tasa_mensual: String(q.tasa_mensual), fecha_primera_cuota: q.fecha_primera_cuota ?? '' });
       setObservaciones(q.observaciones);
     } else if (parcelaId) {
       elegirParcela(parcelaId);
@@ -91,6 +95,12 @@ function Formulario({ id }: { id: number | null }) {
     e.preventDefault();
     if (!parcelaId) return avisos.error('Seleccione la parcela');
     if (contacto.rut.trim() && !rutValido(contacto.rut)) return avisos.error('Revise el RUT del interesado: el dígito verificador no coincide');
+    const errTel = errorTelefono(contacto.telefono, true);
+    if (errTel) return avisos.error(errTel);
+    if (!correoValido(contacto.email)) return avisos.error('Revise el correo del interesado (ej.: nombre@dominio.cl)');
+    // La forma de pago se toma de la simulación: si aún se está calculando, se espera.
+    if (error) return avisos.error(error);
+    if (!sim || sim.precio !== precio) return avisos.error('Espere un momento: se está calculando el crédito');
     setGuardando(true);
     const cuerpo = {
       parcela_id: parcelaId,
@@ -104,7 +114,7 @@ function Formulario({ id }: { id: number | null }) {
       precio_lista: precioLista,
       descuento: descuento ?? 0,
       pie: cond.pie ?? 0,
-      n_cuotas: financiado > 0 ? cond.n_cuotas : 0,
+      ...(financiado > 0 ? plazoDe(cond) : { n_cuotas: 0, cuota_objetivo: null }),
       tasa_mensual: financiado > 0 ? cond.tasa_mensual : 0,
       fecha_primera_cuota: financiado > 0 ? cond.fecha_primera_cuota || null : null,
       observaciones,
@@ -147,13 +157,13 @@ function Formulario({ id }: { id: number | null }) {
                   <Entrada required maxLength={160} value={contacto.nombre} onChange={(e) => setContacto({ ...contacto, nombre: e.target.value })} />
                 </Campo>
                 <Campo etiqueta="RUT (opcional)" className="col-span-2 sm:col-span-1">
-                  <Entrada maxLength={15} value={contacto.rut} onChange={(e) => setContacto({ ...contacto, rut: e.target.value })} />
+                  <EntradaRut valor={contacto.rut} alCambiar={(v) => setContacto({ ...contacto, rut: v })} />
                 </Campo>
-                <Campo etiqueta="Teléfono">
-                  <Entrada type="tel" maxLength={40} value={contacto.telefono} onChange={(e) => setContacto({ ...contacto, telefono: e.target.value })} />
+                <Campo etiqueta="Celular">
+                  <EntradaTelefono movil valor={contacto.telefono} alCambiar={(v) => setContacto({ ...contacto, telefono: v })} />
                 </Campo>
                 <Campo etiqueta="Correo electrónico">
-                  <Entrada type="email" maxLength={160} value={contacto.email} onChange={(e) => setContacto({ ...contacto, email: e.target.value })} />
+                  <Entrada type="email" maxLength={160} placeholder="nombre@dominio.cl" value={contacto.email} onChange={(e) => setContacto({ ...contacto, email: e.target.value })} />
                 </Campo>
               </div>
             </div>

@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { db, insertar, actualizar } from '../db.js';
 import { simular } from './ventas.js';
+import { requiere } from '../auth.js';
+import { informarVenta, solicitudPendiente, descartarSolicitud, listarSolicitudes } from '../lib/solicitudes.js';
 import { hoy } from '../lib/fechas.js';
-import { rutValido, normalizarRut } from '../lib/rut.js';
-import { ErrorApp, leer, texto, entero, decimal, fecha, opcion, idDe } from '../lib/validar.js';
+import { ErrorApp, leer, texto, entero, decimal, fecha, opcion, booleano, idDe, rut, telefono, correo } from '../lib/validar.js';
 
 export const rutasCotizaciones = Router();
 
@@ -11,15 +12,16 @@ const esquema = {
   parcela_id: entero({ req: true, min: 1 }),
   cliente_id: entero({ min: 1 }),
   contacto_nombre: texto({ max: 160 }),
-  contacto_rut: texto({ max: 15 }),
-  contacto_telefono: texto({ max: 40 }),
-  contacto_email: texto({ max: 160 }),
+  contacto_rut: rut(),
+  contacto_telefono: telefono({ movil: true }),
+  contacto_email: correo(),
   fecha: fecha({ req: true }),
   valida_hasta: fecha({ req: true }),
   precio_lista: entero({ req: true, min: 1 }),
   descuento: entero({ min: 0, def: 0 }),
   pie: entero({ min: 0, def: 0 }),
   n_cuotas: entero({ min: 0, max: 360, def: 0 }),
+  cuota_objetivo: entero({ min: 1000, max: 100_000_000_000 }),
   tasa_mensual: decimal({ min: 0, max: 15, def: 0 }),
   fecha_primera_cuota: fecha(),
   observaciones: texto({ max: 3000 }),
@@ -40,16 +42,13 @@ function leerCotizacion(cuerpo) {
     d.contacto_email ||= cl.email;
   }
   if (!d.contacto_nombre) throw new ErrorApp('Indique el nombre del interesado o seleccione un cliente');
-  if (d.contacto_rut) {
-    if (!rutValido(d.contacto_rut)) throw new ErrorApp('RUT del interesado: no es válido (revise el dígito verificador)');
-    d.contacto_rut = normalizarRut(d.contacto_rut);
-  }
 
   d.precio = d.precio_lista - d.descuento;
   const s = simular(d);
-  if (s.monto_financiado > 0 && s.n_cuotas === 0) throw new ErrorApp('Indique el número de cuotas, o un pie igual al precio para venta al contado');
+  if (s.monto_financiado > 0 && s.n_cuotas === 0) throw new ErrorApp('Indique el número de cuotas o el monto de la cuota, o un pie igual al precio para venta al contado');
   d.n_cuotas = s.n_cuotas;
   d.valor_cuota = s.valor_cuota;
+  d.cuota_objetivo = s.cuota_objetivo;
   if (s.n_cuotas === 0) d.tasa_mensual = 0;
   return d;
 }
@@ -80,34 +79,67 @@ rutasCotizaciones.get('/cotizaciones/:id', (req, res) => {
     cotizacion: { ...q, vencida: q.estado === 'vigente' && q.valida_hasta < hoy() },
     parcela: db.get('SELECT id, numero, sector, superficie_m2, precio, estado, rol_sii, descripcion FROM parcelas WHERE id = ?', q.parcela_id),
     simulacion: simular(q),
+    // Último aviso de venta al contador (si lo hay): pendiente, registrada o descartada.
+    solicitud: db.get(
+      `SELECT s.id, s.estado, s.notas, s.creado_en, s.resuelto_en, s.motivo, s.venta_id, s.reservo_parcela, uc.nombre AS informada_por, ur.nombre AS resuelta_por
+         FROM solicitudes_venta s LEFT JOIN usuarios uc ON uc.id = s.creado_por LEFT JOIN usuarios ur ON ur.id = s.resuelto_por
+        WHERE s.cotizacion_id = ? ORDER BY s.id DESC LIMIT 1`,
+      q.id,
+    ) ?? null,
   });
 });
 
-rutasCotizaciones.post('/cotizaciones', (req, res) => {
+// Una cotización cuya venta se informó al contador no se cambia hasta que él la registre o la descarte.
+function noInformada(id) {
+  if (solicitudPendiente(id)) throw new ErrorApp('Esta venta fue informada al contador: no se puede modificar mientras él no la registre o la descarte', 409);
+}
+
+rutasCotizaciones.post('/cotizaciones', requiere('cotizaciones'), (req, res) => {
   const id = insertar('cotizaciones', { ...leerCotizacion(req.body), usuario_id: req.usuario.id });
   res.status(201).json({ id });
 });
 
-rutasCotizaciones.put('/cotizaciones/:id', (req, res) => {
+rutasCotizaciones.put('/cotizaciones/:id', requiere('cotizaciones'), (req, res) => {
   const id = idDe(req.params.id);
   const actual = db.get('SELECT estado FROM cotizaciones WHERE id = ?', id);
   if (!actual) throw new ErrorApp('La cotización no existe', 404);
   if (actual.estado === 'aceptada') throw new ErrorApp('La cotización ya fue aceptada y dio origen a una venta; no se puede modificar', 409);
+  noInformada(id);
   actualizar('cotizaciones', id, leerCotizacion(req.body));
   res.json({ ok: true });
 });
 
-rutasCotizaciones.post('/cotizaciones/:id/estado', (req, res) => {
+rutasCotizaciones.post('/cotizaciones/:id/estado', requiere('cotizaciones'), (req, res) => {
   const id = idDe(req.params.id);
   const { estado } = leer(req.body, { estado: opcion(['vigente', 'rechazada'], { req: true }) });
   const actual = db.get('SELECT estado FROM cotizaciones WHERE id = ?', id);
   if (!actual) throw new ErrorApp('La cotización no existe', 404);
   if (actual.estado === 'aceptada') throw new ErrorApp('La cotización ya fue aceptada', 409);
+  noInformada(id);
   actualizar('cotizaciones', id, { estado });
   res.json({ ok: true });
 });
 
-rutasCotizaciones.delete('/cotizaciones/:id', (req, res) => {
+rutasCotizaciones.delete('/cotizaciones/:id', requiere('cotizaciones'), (req, res) => {
+  noInformada(idDe(req.params.id));
   if (!db.run('DELETE FROM cotizaciones WHERE id = ?', idDe(req.params.id)).changes) throw new ErrorApp('La cotización no existe', 404);
+  res.json({ ok: true });
+});
+
+// ---------- Ventas informadas al contador ----------
+
+rutasCotizaciones.post('/cotizaciones/:id/informar-venta', requiere('informar_ventas'), (req, res) => {
+  const d = leer(req.body, { notas: texto({ max: 2000 }), reservar: booleano() });
+  res.status(201).json(informarVenta(idDe(req.params.id), { notas: d.notas, reservar: req.body?.reservar === undefined ? true : d.reservar }, req.usuario));
+});
+
+rutasCotizaciones.get('/solicitudes-venta', (req, res) => {
+  const estado = ['pendiente', 'registrada', 'descartada'].includes(req.query.estado) ? req.query.estado : req.query.estado === 'todas' ? null : 'pendiente';
+  res.json(listarSolicitudes(estado));
+});
+
+rutasCotizaciones.post('/solicitudes-venta/:id/descartar', requiere('operaciones'), (req, res) => {
+  const { motivo } = leer(req.body, { motivo: texto({ req: true, max: 1000 }) });
+  descartarSolicitud(idDe(req.params.id), motivo, req.usuario);
   res.json({ ok: true });
 });

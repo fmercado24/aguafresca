@@ -5,6 +5,7 @@ import { api, useDatos } from '../api';
 import { useAvisos } from '../contexto';
 import { EditorTexto } from '../componentes/EditorTexto';
 import { Membrete } from '../componentes/Membrete';
+import { EnvioCarta } from '../componentes/EnvioCarta';
 import { descargar, fechaRegistro } from '../formato';
 import type { Documento } from '../tipos';
 import { Boton, Campo, Carga, Casilla, Encabezado, Entrada } from '../ui';
@@ -116,6 +117,7 @@ function Vista({ id }: { id: number }) {
               </div>
             ) : (
               <>
+                {d.tipo === 'carta_cobranza' && d.venta_id && <EnvioCarta d={d} />}
                 <div className="no-imprimir mx-auto mb-3 max-w-3xl">
                   <Casilla checked={conMembrete} onChange={(e) => setMembrete(e.target.checked)} etiqueta="Imprimir con el membrete de la empresa" />
                 </div>

@@ -113,7 +113,7 @@ rutasDocumentos.delete('/plantillas/:id', requiere('plantillas'), (req, res) => 
 // ---------- Documentos emitidos ----------
 
 // Confecciona el borrador (plantilla + datos de la venta) sin guardarlo, para revisarlo y ajustarlo.
-rutasDocumentos.post('/documentos/confeccionar', (req, res) => {
+rutasDocumentos.post('/documentos/confeccionar', requiere('documentos'), (req, res) => {
   const d = leer(req.body, { plantilla_id: entero({ req: true, min: 1 }), venta_id: entero({ req: true, min: 1 }) });
   res.json(confeccionar(d.plantilla_id, d.venta_id));
 });
@@ -132,14 +132,14 @@ rutasDocumentos.get('/documentos', (req, res) => {
 
 rutasDocumentos.get('/documentos/:id', (req, res) => {
   const d = db.get(
-    `SELECT d.*, cl.nombre AS cliente, cl.email AS cliente_email FROM documentos d LEFT JOIN clientes cl ON cl.id = d.cliente_id WHERE d.id = ?`,
+    `SELECT d.*, cl.nombre AS cliente, cl.email AS cliente_email, cl.telefono AS cliente_telefono FROM documentos d LEFT JOIN clientes cl ON cl.id = d.cliente_id WHERE d.id = ?`,
     idDe(req.params.id),
   );
   if (!d) throw new ErrorApp('El documento no existe', 404);
   res.json(d);
 });
 
-rutasDocumentos.post('/documentos', (req, res) => {
+rutasDocumentos.post('/documentos', requiere('documentos'), (req, res) => {
   const d = leer(req.body, {
     tipo: opcion(TIPOS, { req: true }),
     titulo: texto({ req: true, max: 250 }),
@@ -166,7 +166,7 @@ rutasDocumentos.post('/documentos', (req, res) => {
   res.status(201).json({ id });
 });
 
-rutasDocumentos.put('/documentos/:id', (req, res) => {
+rutasDocumentos.put('/documentos/:id', requiere('documentos'), (req, res) => {
   const d = leer(req.body, { titulo: texto({ req: true, max: 250 }) });
   if (!actualizar('documentos', idDe(req.params.id), { ...d, contenido: leerContenido(req.body) })) {
     throw new ErrorApp('El documento no existe', 404);
@@ -174,7 +174,7 @@ rutasDocumentos.put('/documentos/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-rutasDocumentos.delete('/documentos/:id', (req, res) => {
+rutasDocumentos.delete('/documentos/:id', requiere('documentos'), (req, res) => {
   if (!db.run('DELETE FROM documentos WHERE id = ?', idDe(req.params.id)).changes) throw new ErrorApp('El documento no existe', 404);
   res.json({ ok: true });
 });

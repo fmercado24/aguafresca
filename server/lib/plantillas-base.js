@@ -45,7 +45,7 @@ ${firmaCarta}`;
 const comparecencia = `
 <h1 style="text-align:center">CONTRATO DE PROMESA DE COMPRAVENTA</h1>
 <p style="text-align:center"><strong>{{empresa.razon_social}}</strong><br>A<br><strong>{{cliente.nombre}}</strong></p>
-<p style="text-align:justify">En {{empresa.ciudad}}, a {{fecha_hoy}}, entre <strong>{{empresa.razon_social}}</strong>, rol único tributario N° {{empresa.rut}}, representada por don(ña) <strong>{{empresa.representante}}</strong>, cédula de identidad N° {{empresa.rut_representante}}, ambos domiciliados en {{empresa.direccion}}, {{empresa.ciudad}}, en adelante “la promitente vendedora”; y don(ña) <strong>{{cliente.nombre}}</strong>, de nacionalidad {{cliente.nacionalidad}}, {{cliente.estado_civil}}, {{cliente.profesion}}, cédula de identidad N° {{cliente.rut}}, domiciliado(a) en {{cliente.direccion}}, comuna de {{cliente.comuna}}, en adelante “el promitente comprador”; se ha convenido el siguiente contrato de promesa de compraventa:</p>
+<p style="text-align:justify">En {{empresa.ciudad}}, a {{fecha_hoy}}, entre <strong>{{empresa.razon_social}}</strong>, rol único tributario N° {{empresa.rut}}, representada por don(ña) <strong>{{representante.nombre}}</strong>, de nacionalidad {{representante.nacionalidad}}, {{representante.estado_civil}}, {{representante.profesion}}, cédula de identidad N° {{representante.rut}}, ambos domiciliados en {{empresa.direccion}}, {{empresa.ciudad}}, en adelante “la promitente vendedora”; y don(ña) <strong>{{cliente.nombre}}</strong>, de nacionalidad {{cliente.nacionalidad}}, {{cliente.estado_civil}}, {{cliente.profesion}}, cédula de identidad N° {{cliente.rut}}, domiciliado(a) en {{cliente.direccion}}, comuna de {{cliente.comuna}}, en adelante “el promitente comprador”; se ha convenido el siguiente contrato de promesa de compraventa:</p>
 <p style="text-align:justify"><strong>PRIMERO: Antecedentes.</strong> La promitente vendedora es dueña del inmueble denominado {{proyecto.nombre}}, ubicado en {{proyecto.ubicacion}}, cuyo dominio se encuentra inscrito según el siguiente detalle: {{proyecto.inscripcion}}. Dicho inmueble fue subdividido conforme al plano de subdivisión [individualizar plano y su archivo en el Conservador de Bienes Raíces], resultando, entre otros, la <strong>Parcela N° {{parcela.numero}}</strong>, de una superficie aproximada de {{parcela.superficie}} metros cuadrados, rol de avalúo N° {{parcela.rol}}, cuyos deslindes particulares son: {{parcela.deslindes}}.</p>
 <p style="text-align:justify"><strong>SEGUNDO: Promesa.</strong> Por el presente instrumento, la promitente vendedora promete vender, ceder y transferir al promitente comprador, quien promete comprar, aceptar y adquirir para sí, la Parcela N° {{parcela.numero}} individualizada en la cláusula anterior.</p>`;
 
@@ -65,7 +65,7 @@ const clausulasFinales = (n) => {
     c('Ejemplares', 'El presente contrato se firma en dos ejemplares de igual tenor y fecha, quedando uno en poder de cada parte.'),
     `<p><br></p>
 <div class="firmas">
-<div class="firma">______________________________<br><strong>{{empresa.representante}}</strong><br>p.p. {{empresa.razon_social}}<br>Promitente vendedora</div>
+<div class="firma">______________________________<br><strong>{{representante.nombre}}</strong><br>C.I. N° {{representante.rut}}<br>p.p. {{empresa.razon_social}}<br>Promitente vendedora</div>
 <div class="firma">______________________________<br><strong>{{cliente.nombre}}</strong><br>C.I. N° {{cliente.rut}}<br>Promitente comprador</div>
 </div>`,
   ].join('\n');

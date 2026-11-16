@@ -1,5 +1,5 @@
 import { db, insertar } from '../db.js';
-import { tablaAmortizacion, pesos } from './finanzas.js';
+import { tablaAmortizacion, tablaPorCuota, pesos } from './finanzas.js';
 import { hoy, diasEntre, esFecha } from './fechas.js';
 import { ErrorApp } from './validar.js';
 import { leerSeccion } from './configuracion.js';
@@ -86,15 +86,12 @@ export function crearVenta(d, usuarioId) {
     const financiado = d.precio - d.pie;
     let tabla = { cuota: 0, filas: [] };
     if (financiado > 0) {
-      if (!(d.n_cuotas >= 1)) throw new ErrorApp('Indique el número de cuotas para el saldo a crédito');
+      if (!d.cuota_objetivo && !(d.n_cuotas >= 1)) throw new ErrorApp('Indique el número de cuotas o el monto de la cuota para el saldo a crédito');
       if (!d.fecha_primera_cuota) throw new ErrorApp('Indique la fecha de vencimiento de la primera cuota');
       if (d.fecha_primera_cuota < d.fecha) throw new ErrorApp('La primera cuota no puede vencer antes de la fecha de venta');
-      tabla = tablaAmortizacion({
-        monto: financiado,
-        tasaMensual: d.tasa_mensual,
-        nCuotas: d.n_cuotas,
-        fechaPrimeraCuota: d.fecha_primera_cuota,
-      });
+      tabla = d.cuota_objetivo
+        ? tablaPorCuota({ monto: financiado, tasaMensual: d.tasa_mensual, cuota: d.cuota_objetivo, fechaPrimeraCuota: d.fecha_primera_cuota })
+        : tablaAmortizacion({ monto: financiado, tasaMensual: d.tasa_mensual, nCuotas: d.n_cuotas, fechaPrimeraCuota: d.fecha_primera_cuota });
     }
 
     const ventaId = insertar('ventas', {
@@ -109,6 +106,7 @@ export function crearVenta(d, usuarioId) {
       tasa_mensual: financiado > 0 ? d.tasa_mensual : 0,
       n_cuotas: tabla.filas.length,
       valor_cuota: tabla.cuota,
+      cuota_objetivo: financiado > 0 && d.cuota_objetivo ? d.cuota_objetivo : null,
       fecha_primera_cuota: financiado > 0 ? d.fecha_primera_cuota : null,
       observaciones: d.observaciones,
     });

@@ -1,6 +1,6 @@
 // Componentes de interfaz compartidos por todas las pantallas.
 import {
-  useEffect, type ButtonHTMLAttributes, type ComponentType, type InputHTMLAttributes, type ReactNode,
+  useEffect, useState, type ButtonHTMLAttributes, type ComponentType, type InputHTMLAttributes, type ReactNode,
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -9,7 +9,7 @@ import {
   ArrowLeft, BadgeCheck, Ban, CircleAlert, CircleCheck, CircleDashed, CircleX, Clock, Hourglass, LoaderCircle,
   Search, TriangleAlert, X,
 } from 'lucide-react';
-import { miles } from './formato';
+import { analizarTelefono, errorTelefono, formatearRut, miles, rutValido } from './formato';
 import type { EstadoCotizacion, EstadoCuota, EstadoParcela, EstadoVenta, EstadoVisita } from './tipos';
 
 type Icono = ComponentType<{ className?: string }>;
@@ -109,6 +109,103 @@ export function EntradaMonto({ valor, alCambiar, className = '', ...props }: {
         {...props}
       />
     </div>
+  );
+}
+
+const claseError = '!border-red-500 focus:!ring-red-500/25';
+
+/** RUT: solo números, puntos, guion y K; al salir del campo se ordena (12.345.678-9) y se revisa el dígito verificador. */
+export function EntradaRut({ valor, alCambiar, className = '', onBlur, ...props }: {
+  valor: string;
+  alCambiar: (v: string) => void;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  const [tocado, setTocado] = useState(false);
+  const malo = tocado && valor.trim() !== '' && !rutValido(valor);
+  return (
+    <>
+      <input
+        type="text" autoComplete="off" spellCheck={false} maxLength={12} placeholder="12.345.678-9"
+        aria-invalid={malo || undefined}
+        className={`${claseEntrada} ${malo ? claseError : ''} ${className}`}
+        value={valor}
+        onChange={(e) => alCambiar(e.target.value.replace(/[^0-9kK.-]/g, '').toUpperCase())}
+        onBlur={(e) => { setTocado(true); if (rutValido(valor)) alCambiar(formatearRut(valor)); onBlur?.(e); }}
+        {...props}
+      />
+      {malo && <span className="mt-1 block text-xs text-red-700">RUT inválido: revise el dígito verificador</span>}
+    </>
+  );
+}
+
+/** Teléfono: solo números, +, espacios; al salir del campo se ordena (+56 9 1234 5678). Con `movil`, exige celular. */
+export function EntradaTelefono({ valor, alCambiar, movil = false, className = '', onBlur, ...props }: {
+  valor: string;
+  alCambiar: (v: string) => void;
+  movil?: boolean;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  const [tocado, setTocado] = useState(false);
+  const error = tocado ? errorTelefono(valor, movil) : null;
+  return (
+    <>
+      <input
+        type="tel" inputMode="tel" autoComplete="tel" maxLength={18} placeholder="+56 9 1234 5678"
+        aria-invalid={!!error || undefined}
+        className={`${claseEntrada} ${error ? claseError : ''} ${className}`}
+        value={valor}
+        onChange={(e) => alCambiar(e.target.value.replace(/[^\d+\s]/g, '').replace(/(?!^)\+/g, ''))}
+        onBlur={(e) => {
+          setTocado(true);
+          const t = analizarTelefono(valor);
+          if (t && t.valor && !errorTelefono(valor, movil)) alCambiar(t.valor);
+          onBlur?.(e);
+        }}
+        {...props}
+      />
+      {error && <span className="mt-1 block text-xs text-red-700">{error}</span>}
+    </>
+  );
+}
+
+/** Número entero: no admite letras ni signos (con `negativos`, el signo menos al comienzo). */
+export function EntradaEntero({ valor, alCambiar, negativos = false, className = '', ...props }: {
+  valor: string;
+  alCambiar: (v: string) => void;
+  negativos?: boolean;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  return (
+    <input
+      type="text" inputMode="numeric" autoComplete="off"
+      className={`${claseEntrada} tabular-nums ${className}`}
+      value={valor}
+      onChange={(e) => {
+        const v = e.target.value;
+        const signo = negativos && v.trim().startsWith('-') ? '-' : '';
+        alCambiar(signo + v.replace(/\D/g, '').slice(0, 9));
+      }}
+      {...props}
+    />
+  );
+}
+
+/** Número con decimales: se escribe con coma (1,5) y se entrega con punto ("1.5"). Sin letras. */
+export function EntradaDecimal({ valor, alCambiar, decimales = 2, className = '', ...props }: {
+  valor: string;
+  alCambiar: (v: string) => void;
+  decimales?: number;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  return (
+    <input
+      type="text" inputMode="decimal" autoComplete="off"
+      className={`${claseEntrada} tabular-nums ${className}`}
+      value={valor.replace('.', ',')}
+      onChange={(e) => {
+        const limpio = e.target.value.replace(/\./g, ',').replace(/[^\d,]/g, '');
+        const [entera, ...resto] = limpio.split(',');
+        const dec = resto.join('').slice(0, decimales);
+        alCambiar(resto.length ? `${entera.slice(0, 9)}.${dec}` : entera.slice(0, 9));
+      }}
+      {...props}
+    />
   );
 }
 

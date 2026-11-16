@@ -1,4 +1,5 @@
 import { sumarMeses } from './fechas.js';
+import { ErrorApp } from './validar.js';
 
 // Los montos se manejan siempre en pesos chilenos enteros (sin decimales).
 
@@ -43,6 +44,41 @@ export function tablaAmortizacion({ monto, tasaMensual, nCuotas, fechaPrimeraCuo
     });
   }
 
+  return { cuota, filas, totalIntereses, totalPagar: monto + totalIntereses };
+}
+
+/**
+ * Tabla a partir de un monto de cuota "cerrado" (por ejemplo $500.000): todas las cuotas son de ese monto
+ * y la última es menor, por el saldo que queda. El número de cuotas resulta del cálculo.
+ */
+export const MAXIMO_CUOTAS = 360;
+
+export function tablaPorCuota({ monto, tasaMensual, cuota, fechaPrimeraCuota }) {
+  const i = tasaMensual / 100;
+  if (!(cuota > 0)) throw new ErrorApp('Indique el monto de la cuota');
+  if (cuota % 1000 !== 0) throw new ErrorApp('El monto de la cuota debe ser múltiplo de $1.000');
+  const interesInicial = Math.round(monto * i);
+  if (cuota <= interesInicial) {
+    throw new ErrorApp(`Una cuota de ${pesos(cuota)} no alcanza a cubrir el interés del primer mes (${pesos(interesInicial)}): aumente la cuota`);
+  }
+  const filas = [];
+  let saldo = monto;
+  let totalIntereses = 0;
+  for (let k = 1; saldo > 0; k++) {
+    if (k > MAXIMO_CUOTAS) throw new ErrorApp(`Con una cuota de ${pesos(cuota)} el crédito tendría más de ${MAXIMO_CUOTAS} cuotas: aumente la cuota`);
+    const interes = Math.round(saldo * i);
+    const amortizacion = Math.min(saldo, cuota - interes);
+    saldo -= amortizacion;
+    totalIntereses += interes;
+    filas.push({
+      numero: k,
+      fecha: fechaPrimeraCuota ? sumarMeses(fechaPrimeraCuota, k - 1) : null,
+      cuota: amortizacion + interes,
+      interes,
+      amortizacion,
+      saldo,
+    });
+  }
   return { cuota, filas, totalIntereses, totalPagar: monto + totalIntereses };
 }
 

@@ -258,4 +258,98 @@ export const MIGRACIONES = [
   CREATE INDEX idx_bitacora_entidad ON bitacora(entidad, entidad_id);
   CREATE INDEX idx_bitacora_fecha ON bitacora(fecha);
   `,
+
+  // 3. Datos personales de los dueños (ldiaz y pmercado) para completar los documentos legales.
+  `
+  ALTER TABLE usuarios ADD COLUMN datos_personales TEXT NOT NULL DEFAULT '{}';
+  `,
+
+  // 4. Cuotas por monto, quién agendó cada visita, avisos en la aplicación y envío de cartas de cobranza.
+  `
+  -- Crédito calculado a partir de un monto de cuota (múltiplo de $1.000): se guarda para poder reproducirlo.
+  ALTER TABLE cotizaciones ADD COLUMN cuota_objetivo INTEGER;
+  ALTER TABLE ventas ADD COLUMN cuota_objetivo INTEGER;
+
+  ALTER TABLE visitas ADD COLUMN creado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+
+  -- Nombres completos de los dueños, si no se habían cambiado.
+  UPDATE usuarios SET nombre = 'Luis Díaz' WHERE usuario = 'ldiaz' AND nombre = 'L. Díaz';
+  UPDATE usuarios SET nombre = 'Patricio Mercado' WHERE usuario = 'pmercado' AND nombre = 'P. Mercado';
+
+  -- Avisos dentro de la aplicación. "clave" evita repetir el mismo aviso.
+  CREATE TABLE notificaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    detalle TEXT NOT NULL DEFAULT '',
+    enlace TEXT NOT NULL DEFAULT '',
+    clave TEXT NOT NULL,
+    creada_en TEXT NOT NULL DEFAULT (datetime('now')),
+    leida_en TEXT,
+    UNIQUE (usuario_id, clave)
+  );
+  CREATE INDEX idx_notificaciones_usuario ON notificaciones(usuario_id, leida_en);
+
+  -- Cartas de cobranza enviadas por correo o WhatsApp (a mano o en forma programada).
+  CREATE TABLE envios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha TEXT NOT NULL DEFAULT (datetime('now')),
+    venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL,
+    cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+    documento_id INTEGER REFERENCES documentos(id) ON DELETE SET NULL,
+    plantilla_id INTEGER REFERENCES plantillas(id) ON DELETE SET NULL,
+    canal TEXT NOT NULL CHECK (canal IN ('correo', 'whatsapp')),
+    destino TEXT NOT NULL DEFAULT '',
+    estado TEXT NOT NULL CHECK (estado IN ('enviado', 'manual', 'simulado', 'error', 'omitido')),
+    detalle TEXT NOT NULL DEFAULT '',
+    automatico INTEGER NOT NULL DEFAULT 0,
+    clave TEXT,
+    usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+  );
+  CREATE INDEX idx_envios_venta ON envios(venta_id);
+  CREATE INDEX idx_envios_clave ON envios(clave);
+  `,
+
+  // 5. Ventas que el abogado informa al contador para que las registre, y "manzanas" en vez de "sectores".
+  `
+  CREATE TABLE solicitudes_venta (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cotizacion_id INTEGER NOT NULL REFERENCES cotizaciones(id) ON DELETE CASCADE,
+    notas TEXT NOT NULL DEFAULT '',
+    estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'registrada', 'descartada')),
+    reservo_parcela INTEGER NOT NULL DEFAULT 0,
+    venta_id INTEGER REFERENCES ventas(id) ON DELETE SET NULL,
+    creado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+    resuelto_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+    resuelto_en TEXT,
+    motivo TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX idx_solicitudes_cotizacion ON solicitudes_venta(cotizacion_id);
+
+  UPDATE parcelas SET sector = 'Manzana ' || substr(sector, 8) WHERE sector GLOB 'Sector [A-Z]';
+  `,
+
+  // 6. WhatsApp solo a mano (sin la API pagada de Meta): se borra su configuración, y los envíos programados quedan por correo.
+  `
+  UPDATE configuracion SET valor = json_remove(valor, '$.whatsapp') WHERE clave = 'canales' AND json_valid(valor);
+  UPDATE configuracion SET valor = json_set(valor, '$.canales', json('["correo"]')) WHERE clave = 'cobranza_automatica' AND json_valid(valor);
+  `,
+
+  // 7. Avisos push: los equipos (navegador o celular) donde cada cuenta activó los avisos, aunque no esté usando el sistema.
+  `
+  CREATE TABLE push_suscripciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    equipo TEXT NOT NULL DEFAULT '',
+    creada_en TEXT NOT NULL DEFAULT (datetime('now')),
+    ultimo_envio TEXT,
+    fallos INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_push_usuario ON push_suscripciones(usuario_id);
+  `,
 ];

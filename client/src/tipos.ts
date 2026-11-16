@@ -3,10 +3,14 @@
 export type Rol = 'superadmin' | 'abogado' | 'contador';
 
 /**
- * empresa: datos sensibles de la empresa · parcelas: precios y mapa · administracion: cuentas y registro de cambios
- * plantillas: plantillas legales · amortizacion: tabla de amortización · contabilidad: tasas, pagos, anulaciones
+ * empresa: datos sensibles de la empresa · parcelas: crear parcelas, sectores y mapa · precios: precio de lista de las parcelas
+ * administracion: cuentas y registro de cambios completo · plantillas: plantillas legales · amortizacion: tabla de amortización
+ * contabilidad: tasas, pagos, anulaciones · registro_duenos: registro de los cambios de los dueños
+ * datos_personales: los dueños completan sus datos para los documentos legales
  */
-export type Permiso = 'empresa' | 'parcelas' | 'administracion' | 'plantillas' | 'amortizacion' | 'contabilidad';
+export type Permiso = 'operaciones' | 'cotizaciones' | 'informar_ventas' | 'clientes_esenciales' | 'visitas' | 'visitas_todas' | 'documentos'
+  | 'empresa' | 'parcelas' | 'precios' | 'administracion' | 'plantillas' | 'amortizacion' | 'contabilidad'
+  | 'registro_duenos' | 'datos_personales' | 'avisos_visitas';
 
 /** Cuenta con sesión iniciada. */
 export interface Usuario {
@@ -25,6 +29,23 @@ export interface Cuenta {
   usuario?: string;
   rol?: Rol;
   perfil?: string;
+  /** Solo para el super administrador, en las cuentas de los dueños. */
+  datos?: { nombre_completo: string; rut: string; completos: number; total: number };
+}
+
+/** Datos personales de un dueño, para los documentos legales. */
+export interface DatosPersonales {
+  nombre_completo: string;
+  rut: string;
+  nacionalidad: string;
+  estado_civil: string;
+  profesion: string;
+  cargo: string;
+  direccion: string;
+  comuna: string;
+  ciudad: string;
+  telefono: string;
+  email: string;
 }
 
 export interface EntradaRegistro {
@@ -83,6 +104,8 @@ export interface Empresa {
   email: string;
   representante: string;
   rut_representante: string;
+  /** '' = escrito a mano; 'ldiaz' o 'pmercado' = se toma de los datos personales de ese dueño. */
+  representante_cuenta: '' | 'ldiaz' | 'pmercado';
   datos_bancarios: string;
 }
 
@@ -239,6 +262,7 @@ export interface Venta {
   tasa_mensual: number;
   n_cuotas: number;
   valor_cuota: number;
+  cuota_objetivo?: number | null;
   fecha_primera_cuota: string | null;
   estado: EstadoVenta;
   motivo_anulacion: string;
@@ -253,6 +277,7 @@ export interface VentaResumen {
   monto_financiado: number;
   n_cuotas: number;
   valor_cuota: number;
+  cuota_objetivo?: number | null;
   tasa_mensual: number;
   estado: EstadoVenta;
   parcela_id: number;
@@ -332,6 +357,9 @@ export interface Simulacion {
   total_intereses: number;
   total_credito: number;
   total_operacion: number;
+  /** Si el crédito se calculó por monto de cuota: ese monto, y la última cuota (menor). */
+  cuota_objetivo: number | null;
+  ultima_cuota: number;
   filas: FilaAmortizacion[];
 }
 
@@ -407,6 +435,80 @@ export interface Visita {
   vendedor: string | null;
   estado: EstadoVisita;
   notas: string;
+  creado_por: number | null;
+  /** "Luis Díaz (Abogado)" */
+  agendada_por: string | null;
+}
+
+/** Aviso de la campana. */
+export interface Aviso {
+  id: number;
+  tipo: string;
+  titulo: string;
+  detalle: string;
+  enlace: string;
+  creada_en: string;
+  leida_en: string | null;
+}
+
+export type CanalEnvio = 'correo' | 'whatsapp';
+export type EstadoEnvio = 'enviado' | 'manual' | 'simulado' | 'error' | 'omitido';
+
+export interface Envio {
+  id: number;
+  fecha: string;
+  venta_id: number | null;
+  cliente_id: number | null;
+  documento_id: number | null;
+  canal: CanalEnvio;
+  destino: string;
+  estado: EstadoEnvio;
+  detalle: string;
+  automatico: number;
+  cliente: string | null;
+  parcela: string | null;
+  plantilla: string | null;
+  usuario: string | null;
+}
+
+/** Resultado de enviar una carta (con WhatsApp manual trae el enlace para abrirlo). */
+export interface ResultadoEnvio {
+  id: number;
+  canal: CanalEnvio;
+  destino: string;
+  estado: EstadoEnvio;
+  detalle: string;
+  enlace: string | null;
+}
+
+export interface Canales {
+  modo_prueba: boolean;
+  correo_listo: boolean;
+  /** Solo para el super administrador (sin la contraseña). */
+  correo?: { servidor: string; puerto: number; seguridad: 'starttls' | 'ssl' | 'ninguna'; usuario: string; remitente: string; responder_a: string; tiene_clave: boolean };
+}
+
+export interface ProgramacionCobranza {
+  modo: 'manual' | 'automatico';
+  hora: string;
+  dias_habiles: boolean;
+  canales: CanalEnvio[];
+  etapas: { dias: number; plantilla_id: number | null }[];
+  ultima_ejecucion: string | null;
+  plantillas: { id: number; nombre: string }[];
+}
+
+export interface EnvioPlaneado {
+  venta_id: number;
+  cliente_id: number;
+  cliente: string;
+  parcela: string;
+  dias_atraso: number;
+  atrasado: number;
+  etapa: number;
+  plantilla_id: number;
+  plantilla: string;
+  destinos: { canal: CanalEnvio; destino: string | null }[];
 }
 
 export interface Panel {
@@ -436,6 +538,7 @@ export interface CotizacionResumen {
   pie: number;
   n_cuotas: number;
   valor_cuota: number;
+  cuota_objetivo?: number | null;
   estado: EstadoCotizacion;
   vencida: boolean;
   cliente_id: number | null;
@@ -463,6 +566,7 @@ export interface Cotizacion {
   n_cuotas: number;
   tasa_mensual: number;
   valor_cuota: number;
+  cuota_objetivo?: number | null;
   fecha_primera_cuota: string | null;
   observaciones: string;
   estado: EstadoCotizacion;
@@ -475,6 +579,36 @@ export interface CotizacionDetalle {
   cotizacion: Cotizacion;
   parcela: Pick<Parcela, 'id' | 'numero' | 'sector' | 'superficie_m2' | 'precio' | 'estado' | 'rol_sii' | 'descripcion'>;
   simulacion: Simulacion;
+  /** Último aviso de venta al contador hecho a partir de esta cotización. */
+  solicitud: {
+    id: number; estado: EstadoSolicitud; notas: string; creado_en: string; resuelto_en: string | null; motivo: string;
+    venta_id: number | null; reservo_parcela: number; informada_por: string | null; resuelta_por: string | null;
+  } | null;
+}
+
+export type EstadoSolicitud = 'pendiente' | 'registrada' | 'descartada';
+
+/** Venta que el abogado informó al contador para que la registre. */
+export interface SolicitudVenta {
+  id: number;
+  cotizacion_id: number;
+  notas: string;
+  estado: EstadoSolicitud;
+  reservo_parcela: number;
+  venta_id: number | null;
+  creado_en: string;
+  resuelto_en: string | null;
+  motivo: string;
+  precio: number;
+  pie: number;
+  n_cuotas: number;
+  valor_cuota: number;
+  parcela_id: number;
+  parcela: string;
+  comprador: string;
+  contacto_telefono: string;
+  informada_por: string | null;
+  resuelta_por: string | null;
 }
 
 export type TipoDocumento = 'carta_cobranza' | 'promesa';
@@ -505,6 +639,7 @@ export interface Documento {
   venta_id: number | null;
   cliente: string | null;
   cliente_email: string | null;
+  cliente_telefono?: string | null;
   creado_en: string;
 }
 
@@ -515,6 +650,8 @@ export interface Borrador {
   cliente_id: number;
   titulo: string;
   contenido: string;
+  /** Datos del cliente que la plantilla usa y no están completos. */
+  faltan?: string[];
 }
 
 export interface Recibo {

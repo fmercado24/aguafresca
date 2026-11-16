@@ -5,6 +5,7 @@ import { db } from '../db.js';
 import { hoy, sumarDias, fechaLarga, fechaCorta } from './fechas.js';
 import { pesos, montoEnPalabras, numeroEnPalabras } from './finanzas.js';
 import { formatearRut } from './rut.js';
+import { representanteDe, datosDeRol } from './datos-personales.js';
 import { ErrorApp } from './validar.js';
 
 // Las plantillas son HTML simple con variables {{grupo.campo}} que se reemplazan
@@ -32,6 +33,19 @@ export function limpiarHtml(html) {
   });
 }
 
+// Datos de una persona (representante legal y dueños), en el orden en que suelen ir en una comparecencia.
+const DATOS_PERSONA = [
+  ['nombre', 'Nombre completo'], ['nacionalidad', 'Nacionalidad'], ['estado_civil', 'Estado civil'], ['profesion', 'Profesión u oficio'],
+  ['rut', 'RUT (cédula de identidad)'], ['cargo', 'Cargo en la empresa'], ['domicilio', 'Domicilio'], ['comuna', 'Comuna'], ['ciudad', 'Ciudad'],
+  ['telefono', 'Teléfono'], ['email', 'Correo electrónico'],
+];
+const variablesDePersona = (prefijo) => DATOS_PERSONA.map(([k, d]) => [`${prefijo}.${k}`, d]);
+
+const DATOS_CLIENTE = {
+  nombre: 'Nombre', rut: 'RUT', nacionalidad: 'Nacionalidad', estado_civil: 'Estado civil', profesion: 'Profesión u oficio',
+  direccion: 'Dirección', comuna: 'Comuna', ciudad: 'Ciudad', telefono: 'Teléfono', email: 'Correo electrónico',
+};
+
 // Catálogo que se muestra en el editor de plantillas ("Insertar dato").
 export const CATALOGO = [
   { grupo: 'General', variables: [
@@ -51,6 +65,9 @@ export const CATALOGO = [
     ['empresa.rut_representante', 'RUT del representante legal'],
     ['empresa.datos_bancarios', 'Datos para transferencia'],
   ] },
+  { grupo: 'Representante legal (de sus datos personales si es uno de los dueños)', variables: variablesDePersona('representante') },
+  { grupo: 'Abogado · ldiaz (sus datos personales)', variables: variablesDePersona('abogado') },
+  { grupo: 'Contador · pmercado (sus datos personales)', variables: variablesDePersona('contador') },
   { grupo: 'Proyecto', variables: [
     ['proyecto.nombre', 'Nombre del proyecto'],
     ['proyecto.ubicacion', 'Ubicación'],
@@ -70,7 +87,7 @@ export const CATALOGO = [
   ] },
   { grupo: 'Parcela', variables: [
     ['parcela.numero', 'Número de parcela'],
-    ['parcela.sector', 'Sector o etapa'],
+    ['parcela.manzana', 'Manzana'],
     ['parcela.superficie', 'Superficie en m²'],
     ['parcela.rol', 'Rol de avalúo (SII)'],
     ['parcela.deslindes', 'Deslindes'],
@@ -148,13 +165,25 @@ export function valoresPara(ventaId) {
   poner('empresa.rut_representante', formatearRut(cfg.empresa.rut_representante));
   for (const k of ['nombre', 'ubicacion', 'inscripcion']) poner(`proyecto.${k}`, cfg.proyecto[k]);
 
+  // Representante legal y dueños: se completan solos con lo que cada dueño ingresó en "Mis datos personales".
+  const persona = (prefijo, d) => {
+    for (const [k] of DATOS_PERSONA) {
+      const valor = k === 'nombre' ? d.nombre_completo : k === 'rut' ? (d.rut ? formatearRut(d.rut) : '') : k === 'domicilio' ? d.direccion : d[k];
+      poner(`${prefijo}.${k}`, valor);
+    }
+  };
+  persona('representante', representanteDe(cfg.empresa));
+  persona('abogado', datosDeRol('abogado'));
+  persona('contador', datosDeRol('contador'));
+
   for (const k of ['nombre', 'nacionalidad', 'estado_civil', 'profesion', 'direccion', 'comuna', 'ciudad', 'telefono', 'email']) {
     poner(`cliente.${k}`, cliente[k]);
   }
   poner('cliente.rut', formatearRut(cliente.rut));
 
   poner('parcela.numero', parcela.numero);
-  poner('parcela.sector', parcela.sector);
+  poner('parcela.manzana', parcela.sector);
+  poner('parcela.sector', parcela.sector); // nombre anterior de la misma variable
   poner('parcela.superficie', parcela.superficie_m2 ? miles(parcela.superficie_m2) : '');
   poner('parcela.rol', parcela.rol_sii);
   poner('parcela.deslindes', parcela.deslindes);
@@ -216,7 +245,12 @@ export function confeccionar(plantillaId, ventaId) {
   const plantilla = db.get('SELECT * FROM plantillas WHERE id = ?', plantillaId);
   if (!plantilla) throw new ErrorApp('La plantilla no existe', 404);
   const { valores, parcela, cliente, venta } = valoresPara(ventaId);
+  // Datos del cliente que usa la plantilla y no están completos: se avisan para completarlos antes de imprimir.
+  const faltan = Object.entries(DATOS_CLIENTE)
+    .filter(([k]) => new RegExp(`\\{\\{\\s*cliente\\.${k}\\s*\\}\\}`).test(plantilla.contenido) && !String(cliente[k] ?? '').trim())
+    .map(([, etiqueta]) => etiqueta);
   return {
+    faltan,
     tipo: plantilla.tipo,
     plantilla_id: plantilla.id,
     venta_id: venta.id,

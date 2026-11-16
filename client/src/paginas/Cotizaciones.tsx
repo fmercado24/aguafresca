@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Calculator, Plus } from 'lucide-react';
 import { useDatos } from '../api';
+import { useSesion } from '../contexto';
 import { fecha, pesos, plural } from '../formato';
 import type { CotizacionResumen } from '../tipos';
 import { Buscador, Carga, Encabezado, EnlaceBoton, InsigniaCotizacion, Tabla, Tarjeta, Vacio, num, td, th } from '../ui';
 
 export function Cotizaciones() {
+  const opera = useSesion().puede('cotizaciones');
   const navegar = useNavigate();
   const consulta = useDatos<CotizacionResumen[]>('/cotizaciones');
   const [busqueda, setBusqueda] = useState('');
@@ -22,14 +24,14 @@ export function Cotizaciones() {
   return (
     <>
       <Encabezado titulo="Cotizaciones" descripcion={consulta.datos ? `${plural(cotizaciones.length, 'cotización', 'cotizaciones')} · ${vigentes} vigentes` : undefined}>
-        <EnlaceBoton to="/cotizaciones/nueva" icono={Plus}>Nueva cotización</EnlaceBoton>
+        {opera && <EnlaceBoton to="/cotizaciones/nueva" icono={Plus}>Nueva cotización</EnlaceBoton>}
       </Encabezado>
 
       <Carga consulta={consulta}>
         {() =>
           cotizaciones.length === 0 ? (
             <Tarjeta>
-              <Vacio icono={Calculator} titulo="Aún no hay cotizaciones" accion={<EnlaceBoton to="/cotizaciones/nueva" icono={Plus}>Crear cotización</EnlaceBoton>}>
+              <Vacio icono={Calculator} titulo="Aún no hay cotizaciones" accion={opera && <EnlaceBoton to="/cotizaciones/nueva" icono={Plus}>Crear cotización</EnlaceBoton>}>
                 Simule el crédito de una parcela y entregue al interesado una cotización impresa o en PDF.
               </Vacio>
             </Tarjeta>

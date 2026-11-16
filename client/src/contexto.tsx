@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CircleAlert, CircleCheck, X } from 'lucide-react';
 import { api, EVENTO_SESION_VENCIDA, mensajeDe } from './api';
+import { olvidarPushEnServidor, renovarPush } from './push';
 import type { Config, Permiso, Usuario } from './tipos';
 import { Boton, Modal } from './ui';
 
@@ -45,6 +46,7 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
         const u = await api.get<Usuario>('/auth/yo');
         await recargarConfig();
         setUsuario(u);
+        renovarPush();
       } catch {
         setUsuario(null);
       } finally {
@@ -66,8 +68,12 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
         const u = await api.post<Usuario>('/auth/login', { usuario: nombreUsuario, password });
         await recargarConfig();
         setUsuario(u);
+        // Si este equipo tenía los avisos activados, ahora llegan a la cuenta que ingresó.
+        renovarPush();
       },
       async salir() {
+        // Al cerrar sesión, este equipo deja de recibir avisos (se reactivan solos al volver a ingresar).
+        await olvidarPushEnServidor();
         await api.post('/auth/logout').catch(() => undefined);
         setUsuario(null);
       },

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { CircleCheck, Download, TriangleAlert, UserPlus, Users } from 'lucide-react';
 import { useDatos } from '../api';
+import { useSesion } from '../contexto';
 import { FormularioCliente } from '../componentes/FormularioCliente';
 import { descargarCsv, formatearRut, pesos, plural } from '../formato';
 import type { ClienteResumen } from '../tipos';
@@ -17,6 +18,7 @@ export function Situacion({ c }: { c: Pick<ClienteResumen, 'saldo' | 'atrasado' 
 }
 
 export function Clientes() {
+  const opera = useSesion().puede('operaciones');
   const navegar = useNavigate();
   const consulta = useDatos<ClienteResumen[]>('/clientes');
   const [busqueda, setBusqueda] = useState('');
@@ -48,7 +50,7 @@ export function Clientes() {
   return (
     <>
       <Encabezado titulo="Clientes" descripcion={consulta.datos ? `${plural(clientes.length, 'cliente')} · ${enMora} con cuotas atrasadas` : undefined}>
-        <Boton icono={UserPlus} onClick={() => setCreando(true)}>Nuevo cliente</Boton>
+        {opera && <Boton icono={UserPlus} onClick={() => setCreando(true)}>Nuevo cliente</Boton>}
       </Encabezado>
 
       <Carga consulta={consulta}>

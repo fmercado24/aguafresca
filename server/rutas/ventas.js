@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { db, actualizar } from '../db.js';
 import { requiere } from '../auth.js';
 import { entradaConAnterior } from '../lib/bitacora.js';
+import { cerrarSolicitudConVenta } from '../lib/solicitudes.js';
 import {
   MEDIOS_PAGO, crearVenta, registrarPago, anularPago, editarPago, anularVenta, eliminarVenta, detalleVenta,
   leerTabla, aplicarTabla,
 } from '../lib/creditos.js';
-import { tablaAmortizacion, tasaAnualEquivalente } from '../lib/finanzas.js';
+import { tablaAmortizacion, tablaPorCuota, tasaAnualEquivalente } from '../lib/finanzas.js';
 import { hoy } from '../lib/fechas.js';
 import { ErrorApp, leer, texto, entero, decimal, fecha, opcion, booleano, idDe } from '../lib/validar.js';
 
@@ -16,16 +17,26 @@ const condiciones = {
   precio: entero({ req: true, min: 1 }),
   pie: entero({ min: 0, def: 0 }),
   n_cuotas: entero({ min: 0, max: 360, def: 0 }),
+  // Alternativa al número de cuotas: el monto de cada cuota (múltiplo de $1.000); el número de cuotas resulta del cálculo.
+  cuota_objetivo: entero({ min: 1000, max: 100_000_000_000 }),
   tasa_mensual: decimal({ min: 0, max: 15, def: 0 }),
   fecha_primera_cuota: fecha(),
 };
+
+/** Tabla del saldo a crédito: por número de cuotas (cuota fija calculada) o por monto de cuota. */
+export function tablaDelCredito(d, financiado) {
+  if (d.cuota_objetivo) {
+    return tablaPorCuota({ monto: financiado, tasaMensual: d.tasa_mensual, cuota: d.cuota_objetivo, fechaPrimeraCuota: d.fecha_primera_cuota });
+  }
+  return tablaAmortizacion({ monto: financiado, tasaMensual: d.tasa_mensual, nCuotas: d.n_cuotas, fechaPrimeraCuota: d.fecha_primera_cuota });
+}
 
 /** Simulación de un crédito (sin guardar nada): la usan los formularios de cotización y venta. */
 export function simular(d) {
   if (d.pie > d.precio) throw new ErrorApp('El pie no puede ser mayor que el precio');
   const financiado = d.precio - d.pie;
-  const t = financiado > 0 && d.n_cuotas > 0
-    ? tablaAmortizacion({ monto: financiado, tasaMensual: d.tasa_mensual, nCuotas: d.n_cuotas, fechaPrimeraCuota: d.fecha_primera_cuota })
+  const t = financiado > 0 && (d.n_cuotas > 0 || d.cuota_objetivo)
+    ? tablaDelCredito(d, financiado)
     : { cuota: 0, filas: [], totalIntereses: 0, totalPagar: financiado };
   return {
     precio: d.precio,
@@ -35,6 +46,8 @@ export function simular(d) {
     tasa_mensual: d.tasa_mensual,
     tasa_anual: Math.round(tasaAnualEquivalente(d.tasa_mensual) * 100) / 100,
     valor_cuota: t.cuota,
+    cuota_objetivo: financiado > 0 && d.cuota_objetivo ? d.cuota_objetivo : null,
+    ultima_cuota: t.filas.length ? t.filas[t.filas.length - 1].cuota : 0,
     total_intereses: t.totalIntereses,
     total_credito: t.totalPagar,
     total_operacion: d.pie + t.totalPagar,
@@ -71,7 +84,7 @@ rutasVentas.get('/ventas/:id', (req, res) => {
   res.json(d);
 });
 
-rutasVentas.post('/ventas', (req, res) => {
+rutasVentas.post('/ventas', requiere('operaciones'), (req, res) => {
   const d = leer(req.body, {
     ...condiciones,
     parcela_id: entero({ req: true, min: 1 }),
@@ -84,11 +97,17 @@ rutasVentas.post('/ventas', (req, res) => {
     medio_pie: opcion(MEDIOS_PAGO),
     cuotas_pagadas: entero({ min: 0, max: 360, def: 0 }),
   });
-  res.status(201).json({ id: crearVenta(d, req.usuario.id) });
+  const id = db.tx(() => {
+    const ventaId = crearVenta(d, req.usuario.id);
+    // Si el abogado había informado esta venta, el aviso queda cerrado y se le avisa que ya está registrada.
+    if (d.cotizacion_id) cerrarSolicitudConVenta(d.cotizacion_id, ventaId, req.usuario);
+    return ventaId;
+  });
+  res.status(201).json({ id });
 });
 
 // Vendedor y observaciones. Las condiciones del crédito se cambian con el editor de la tabla de amortización.
-rutasVentas.put('/ventas/:id', (req, res) => {
+rutasVentas.put('/ventas/:id', requiere('operaciones'), (req, res) => {
   const d = leer(req.body, { vendedor_id: entero({ min: 1 }), observaciones: texto({ max: 3000 }) });
   if (!actualizar('ventas', idDe(req.params.id), d)) throw new ErrorApp('La venta no existe', 404);
   res.json({ ok: true });
@@ -144,7 +163,7 @@ rutasVentas.get('/ventas/:id/historial', (req, res) => {
 
 // ---------- Pagos ----------
 
-rutasVentas.post('/ventas/:id/pagos', (req, res) => {
+rutasVentas.post('/ventas/:id/pagos', requiere('operaciones'), (req, res) => {
   const d = leer(req.body, {
     fecha: fecha({ req: true }),
     monto: entero({ req: true, min: 1 }),

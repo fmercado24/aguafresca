@@ -16,6 +16,14 @@ export function hoy() {
   }).format(new Date());
 }
 
+/** Fecha y hora actuales en la zona horaria de la empresa: 'AAAA-MM-DDTHH:MM'. */
+export function ahora() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: config.zonaHoraria, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
 export function esFecha(s) {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const [a, m, d] = partes(s);

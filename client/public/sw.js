@@ -44,3 +44,31 @@ self.addEventListener('fetch', (evento) => {
     );
   }
 });
+
+// Al tocar un aviso del sistema: se abre (o se trae al frente) la aplicación en la pantalla del aviso.
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close();
+  const destino = new URL(evento.notification.data?.enlace || '/', self.location.origin).href;
+  evento.waitUntil((async () => {
+    const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const abierta = ventanas.find((v) => new URL(v.url).origin === self.location.origin);
+    if (abierta) {
+      await abierta.focus();
+      return abierta.navigate(destino);
+    }
+    return self.clients.openWindow(destino);
+  })());
+});
+
+// Aviso push: llega aunque el sistema no esté abierto (el navegador despierta este service worker).
+self.addEventListener('push', (evento) => {
+  let aviso = {};
+  try { aviso = evento.data ? evento.data.json() : {}; } catch { aviso = { titulo: evento.data?.text() }; }
+  evento.waitUntil(self.registration.showNotification(aviso.titulo || 'Fundo Entre Ríos', {
+    body: aviso.detalle || '',
+    icon: '/icono-192.png',
+    badge: '/icono-192.png',
+    tag: aviso.id ? `aviso-${aviso.id}` : undefined,
+    data: { enlace: aviso.enlace || '/' },
+  }));
+});

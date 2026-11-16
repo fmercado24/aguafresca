@@ -2,22 +2,23 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Banknote, CircleCheck, Download, FileText, NotebookPen, Phone } from 'lucide-react';
 import { useDatos } from '../api';
-import { useConfig } from '../contexto';
+import { useConfig, useSesion } from '../contexto';
 import { FormularioGestion, TIPOS_GESTION } from '../componentes/FormularioGestion';
 import { GraficoFlujo } from '../componentes/GraficoFlujo';
+import { VistaEnvios } from './EnvioCartas';
 import { MEDIOS_PAGO, descargarCsv, fecha, formatearRut, mesLargo, pesos, plural, porcentaje } from '../formato';
 import type { Atrasadas, CuotaConContexto, Deudor, Flujo, PagoRecibido } from '../tipos';
 import {
   Boton, Campo, Carga, Dato, Encabezado, EnlaceBoton, Entrada, InsigniaCuota, Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th,
 } from '../ui';
 
-type Vista = 'atrasadas' | 'pendientes' | 'flujo' | 'pagos';
+type Vista = 'atrasadas' | 'pendientes' | 'flujo' | 'pagos' | 'envios';
 
 const nombreCuota = (c: { tipo: 'pie' | 'cuota'; numero: number }) => (c.tipo === 'pie' ? 'Pie' : `N° ${c.numero}`);
 
 export function Cobranza() {
   const [params, setParams] = useSearchParams();
-  const vista = (['atrasadas', 'pendientes', 'flujo', 'pagos'] as Vista[]).find((v) => v === params.get('vista')) ?? 'atrasadas';
+  const vista = (['atrasadas', 'pendientes', 'flujo', 'pagos', 'envios'] as Vista[]).find((v) => v === params.get('vista')) ?? 'atrasadas';
 
   return (
     <>
@@ -30,12 +31,14 @@ export function Cobranza() {
           { id: 'pendientes', etiqueta: 'Cuotas pendientes' },
           { id: 'flujo', etiqueta: 'Flujo de ingresos' },
           { id: 'pagos', etiqueta: 'Pagos recibidos' },
+          { id: 'envios', etiqueta: 'Envío de cartas' },
         ]}
       />
       {vista === 'atrasadas' && <VistaAtrasadas />}
       {vista === 'pendientes' && <VistaPendientes />}
       {vista === 'flujo' && <VistaFlujo />}
       {vista === 'pagos' && <VistaPagos />}
+      {vista === 'envios' && <VistaEnvios />}
     </>
   );
 }
@@ -43,6 +46,7 @@ export function Cobranza() {
 // ---------- Cuotas atrasadas, por deudor ----------
 
 function VistaAtrasadas() {
+  const opera = useSesion().puede('operaciones');
   const consulta = useDatos<Atrasadas>('/cobranza/atrasadas');
   const [gestion, setGestion] = useState<Deudor | null>(null);
 
@@ -120,9 +124,9 @@ function VistaAtrasadas() {
                       </td>
                       <td className={`${td} text-right`}>
                         <div className="flex flex-wrap justify-end gap-1">
-                          <Boton chico variante="secundario" icono={NotebookPen} onClick={() => setGestion(d)}>Gestión</Boton>
+                          {opera && <Boton chico variante="secundario" icono={NotebookPen} onClick={() => setGestion(d)}>Gestión</Boton>}
                           <EnlaceBoton chico variante="secundario" icono={FileText} to={`/documentos/nuevo?tipo=carta_cobranza&venta=${d.venta_id}`}>Carta</EnlaceBoton>
-                          <EnlaceBoton chico icono={Banknote} to={`/ventas/${d.venta_id}?pago=1`}>Pago</EnlaceBoton>
+                          {opera && <EnlaceBoton chico icono={Banknote} to={`/ventas/${d.venta_id}?pago=1`}>Pago</EnlaceBoton>}
                         </div>
                       </td>
                     </tr>

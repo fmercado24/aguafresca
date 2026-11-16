@@ -2,17 +2,26 @@ import { useEffect, useState } from 'react';
 import { api, mensajeDe } from '../api';
 import { fecha, numero, pesos, porcentaje } from '../formato';
 import type { FilaAmortizacion, Simulacion } from '../tipos';
-import { Campo, Entrada, EntradaMonto, Tabla, num, td, th } from '../ui';
+import {
+  Campo, Entrada, EntradaMonto, Tabla, num, td, th, EntradaEntero, EntradaDecimal,
+} from '../ui';
 
 // Piezas compartidas por los formularios de cotización y de venta: condiciones del crédito,
 // simulación en vivo (la calcula el servidor, única fuente de la fórmula) y tabla de amortización.
 
 export interface Condiciones {
   pie: number | null;
+  /** 'cuotas': se elige el número de cuotas y se calcula su valor; 'monto': se elige el valor y se calcula cuántas. */
+  modo?: 'cuotas' | 'monto';
   n_cuotas: string;
+  cuota_objetivo?: number | null;
   tasa_mensual: string;
   fecha_primera_cuota: string;
 }
+
+/** Número de cuotas o monto de la cuota, según el modo, para enviar al servidor. */
+export const plazoDe = (c: Condiciones) =>
+  c.modo === 'monto' ? { n_cuotas: 0, cuota_objetivo: c.cuota_objetivo || null } : { n_cuotas: c.n_cuotas || 0, cuota_objetivo: null };
 
 export function useSimulacion(precio: number | null, c: Condiciones) {
   const [sim, setSim] = useState<Simulacion | null>(null);
@@ -29,7 +38,7 @@ export function useSimulacion(precio: number | null, c: Condiciones) {
       api.post<Simulacion>('/simular', {
         precio,
         pie: c.pie ?? 0,
-        n_cuotas: c.n_cuotas || 0,
+        ...plazoDe(c),
         tasa_mensual: c.tasa_mensual || 0,
         fecha_primera_cuota: c.fecha_primera_cuota || null,
       }).then(
@@ -41,7 +50,7 @@ export function useSimulacion(precio: number | null, c: Condiciones) {
       vigente = false;
       clearTimeout(espera);
     };
-  }, [precio, c.pie, c.n_cuotas, c.tasa_mensual, c.fecha_primera_cuota]);
+  }, [precio, c.pie, c.modo, c.n_cuotas, c.cuota_objetivo, c.tasa_mensual, c.fecha_primera_cuota]);
 
   return { sim, error };
 }
@@ -74,11 +83,38 @@ export function CamposCredito({ precio, valor, alCambiar }: { precio: number | n
       >
         <EntradaMonto valor={valor.pie} alCambiar={(v) => cambiar('pie', v)} />
       </Campo>
-      <Campo etiqueta="Número de cuotas mensuales" className="col-span-2 sm:col-span-1">
-        <Entrada type="number" inputMode="numeric" min={0} max={360} step={1} disabled={alContado} value={alContado ? '' : valor.n_cuotas} onChange={(e) => cambiar('n_cuotas', e.target.value)} />
-      </Campo>
+      <div className="col-span-2 sm:col-span-1">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-stone-600">Calcular por</span>
+          <div className="inline-flex rounded-md border border-stone-300 bg-white p-0.5 text-xs" role="group" aria-label="Calcular por">
+            {(['cuotas', 'monto'] as const).map((m) => (
+              <button
+                key={m} type="button" disabled={alContado} aria-pressed={(valor.modo ?? 'cuotas') === m}
+                onClick={() => alCambiar({ ...valor, modo: m })}
+                className={`rounded px-2 py-0.5 font-medium ${(valor.modo ?? 'cuotas') === m ? 'bg-marca-600 text-white' : 'text-stone-700 hover:bg-stone-100'}`}
+              >
+                {m === 'cuotas' ? 'N° de cuotas' : 'Monto de la cuota'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {valor.modo === 'monto' ? (
+          <Campo etiqueta="Monto de cada cuota" ayuda="Múltiplos de $1.000. El número de cuotas se calcula solo; la última es menor.">
+            <EntradaMonto
+              aria-label="Monto de cada cuota" disabled={alContado} valor={alContado ? null : valor.cuota_objetivo ?? null}
+              alCambiar={(v) => cambiar('cuota_objetivo', v)}
+              // Solo valores cerrados: al salir del campo se redondea al múltiplo de $1.000 más cercano.
+              onBlur={() => valor.cuota_objetivo && valor.cuota_objetivo % 1000 !== 0 && cambiar('cuota_objetivo', Math.max(1000, Math.round(valor.cuota_objetivo / 1000) * 1000))}
+            />
+          </Campo>
+        ) : (
+          <Campo etiqueta="Número de cuotas mensuales">
+            <EntradaEntero disabled={alContado} valor={alContado ? '' : valor.n_cuotas} alCambiar={(v) => cambiar('n_cuotas', v)} />
+          </Campo>
+        )}
+      </div>
       <Campo etiqueta="Interés mensual (%)" ayuda={tasa > 0 ? `Equivale a ${porcentaje((Math.pow(1 + tasa / 100, 12) - 1) * 100)} anual.` : 'Sin interés.'}>
-        <Entrada type="number" inputMode="decimal" min={0} max={15} step="0.01" disabled={alContado} value={alContado ? '' : valor.tasa_mensual} onChange={(e) => cambiar('tasa_mensual', e.target.value)} />
+        <EntradaDecimal disabled={alContado} valor={alContado ? '' : valor.tasa_mensual} alCambiar={(v) => cambiar('tasa_mensual', v)} />
       </Campo>
       <Campo etiqueta="Vence la primera cuota">
         <Entrada type="date" disabled={alContado} value={alContado ? '' : valor.fecha_primera_cuota} onChange={(e) => cambiar('fecha_primera_cuota', e.target.value)} />
@@ -131,6 +167,8 @@ export function ResumenSimulacion({ sim, error }: { sim: Simulacion | null; erro
   if (!sim) return <p className="text-sm text-stone-500">Seleccione una parcela e indique las condiciones para ver la simulación.</p>;
 
   const contado = sim.monto_financiado === 0;
+  // Solo al calcular por monto de cuota la última es distinta (menor); con N° de cuotas solo ajusta unos pesos de redondeo.
+  const ultimaMenor = !contado && !!sim.cuota_objetivo && sim.n_cuotas > 1 && sim.ultima_cuota !== sim.valor_cuota;
   const linea = (etiqueta: string, valor: string, fuerte = false) => (
     <div className="flex items-baseline justify-between gap-3 py-1">
       <dt className="text-sm text-stone-600">{etiqueta}</dt>
@@ -141,8 +179,11 @@ export function ResumenSimulacion({ sim, error }: { sim: Simulacion | null; erro
   return (
     <div>
       <div className="rounded-lg bg-marca-50 px-4 py-3">
-        <div className="text-xs font-medium text-marca-800">{contado ? 'Pago al contado' : `${sim.n_cuotas} cuotas mensuales de`}</div>
+        <div className="text-xs font-medium text-marca-800">
+          {contado ? 'Pago al contado' : ultimaMenor ? `${sim.n_cuotas - 1} cuotas mensuales de` : `${sim.n_cuotas} cuotas mensuales de`}
+        </div>
         <div className="text-2xl font-semibold tracking-tight text-stone-900">{pesos(contado ? sim.precio : sim.valor_cuota)}</div>
+        {ultimaMenor && <div className="text-sm text-stone-700">y una última cuota de <strong className="tabular-nums">{pesos(sim.ultima_cuota)}</strong></div>}
       </div>
       <dl className="mt-3 divide-y divide-stone-100">
         {linea('Precio de venta', pesos(sim.precio))}

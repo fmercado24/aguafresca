@@ -40,7 +40,7 @@ export const api = {
   get: <T>(ruta: string) => pedir<T>('GET', ruta),
   post: <T = { id: number }>(ruta: string, cuerpo: unknown = {}) => pedir<T>('POST', ruta, cuerpo),
   put: <T = { ok: true }>(ruta: string, cuerpo: unknown = {}) => pedir<T>('PUT', ruta, cuerpo),
-  del: <T = { ok: true }>(ruta: string) => pedir<T>('DELETE', ruta),
+  del: <T = { ok: true }>(ruta: string, cuerpo?: unknown) => pedir<T>('DELETE', ruta, cuerpo),
   /** Sube un archivo como cuerpo binario. */
   subir: <T>(ruta: string, archivo: Blob) => pedir<T>('POST', ruta, archivo, { 'Content-Type': archivo.type }),
 };

@@ -2,11 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
-import { CamposCredito, ResumenSimulacion, useSimulacion, type Condiciones } from '../componentes/Credito';
+import { CamposCredito, ResumenSimulacion, useSimulacion, type Condiciones, plazoDe } from '../componentes/Credito';
 import { SelectorCliente } from '../componentes/FormularioCliente';
 import { MEDIOS_PAGO, numero, pesos, sumarMeses, precioLista } from '../formato';
 import type { ClienteResumen, CotizacionDetalle, Cuenta, Parcela } from '../tipos';
-import { AreaTexto, Boton, Campo, Cargando, Casilla, Encabezado, EnlaceBoton, Entrada, EntradaMonto, Selector, Tarjeta } from '../ui';
+import {
+  AreaTexto, Boton, Campo, Cargando, Casilla, Encabezado, EnlaceBoton, Entrada, EntradaMonto, Selector, Tarjeta, EntradaEntero,
+} from '../ui';
 
 export function VentaNueva() {
   const config = useConfig();
@@ -27,6 +29,8 @@ export function VentaNueva() {
   const [precio, setPrecio] = useState<number | null>(null);
   const [cond, setCond] = useState<Condiciones>({
     pie: null,
+    modo: 'cuotas',
+    cuota_objetivo: null,
     n_cuotas: String(config.credito.n_cuotas),
     tasa_mensual: String(config.credito.tasa_mensual),
     fecha_primera_cuota: sumarMeses(config.hoy, 1),
@@ -67,6 +71,8 @@ export function VentaNueva() {
       setCond({
         pie: q.pie,
         n_cuotas: String(q.n_cuotas || ''),
+        modo: q.cuota_objetivo ? 'monto' : 'cuotas',
+        cuota_objetivo: q.cuota_objetivo ?? null,
         tasa_mensual: String(q.tasa_mensual),
         fecha_primera_cuota: q.fecha_primera_cuota && q.fecha_primera_cuota > config.hoy ? q.fecha_primera_cuota : sumarMeses(config.hoy, 1),
       });
@@ -89,6 +95,9 @@ export function VentaNueva() {
     if (!parcelaId) return avisos.error('Seleccione la parcela');
     if (!clienteId) return avisos.error('Seleccione o cree el cliente comprador');
     if (!precio) return avisos.error('Indique el precio de venta');
+    // La forma de pago se toma de la simulación: si aún se está calculando, se espera.
+    if (error) return avisos.error(error);
+    if (!sim || sim.precio !== precio) return avisos.error('Espere un momento: se está calculando el crédito');
     setGuardando(true);
     try {
       const { id } = await api.post('/ventas', {
@@ -99,7 +108,7 @@ export function VentaNueva() {
         fecha,
         precio,
         pie: cond.pie ?? 0,
-        n_cuotas: financiado > 0 ? cond.n_cuotas : 0,
+        ...(financiado > 0 ? plazoDe(cond) : { n_cuotas: 0, cuota_objetivo: null }),
         tasa_mensual: financiado > 0 ? cond.tasa_mensual : 0,
         fecha_primera_cuota: financiado > 0 ? cond.fecha_primera_cuota : null,
         observaciones,
@@ -122,6 +131,13 @@ export function VentaNueva() {
         titulo="Nueva venta"
         descripcion={contacto ? `A partir de la cotización N° ${contacto.id} para ${contacto.contacto_nombre}` : 'Al guardar se genera el calendario de cuotas con su tabla de amortización.'}
       />
+      {cotizacion.datos?.solicitud?.estado === 'pendiente' && (
+        <p className="mb-4 rounded-xl border border-marca-200 bg-marca-50 px-4 py-3 text-sm text-marca-900">
+          <strong>Venta informada por {cotizacion.datos.solicitud.informada_por}.</strong> Revise el comprador y la forma de pago, y regístrela:
+          al guardar se le avisará que quedó registrada.
+          {cotizacion.datos.solicitud.notas && <span className="mt-1 block">Notas: {cotizacion.datos.solicitud.notas}</span>}
+        </p>
+      )}
       <form onSubmit={guardar} className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="space-y-4">
           <Tarjeta titulo="Parcela y comprador">
@@ -188,7 +204,7 @@ export function VentaNueva() {
                   />
                   {ventaAntigua && (
                     <Campo etiqueta="Cantidad de cuotas ya pagadas" ayuda="Se registrará un pago por cada una, en su fecha de vencimiento. Después podrá corregirlos en la venta." className="max-w-xs">
-                      <Entrada type="number" inputMode="numeric" min={0} max={sim?.n_cuotas ?? 360} value={cuotasPagadas} onChange={(e) => setCuotasPagadas(e.target.value)} />
+                      <EntradaEntero valor={String(cuotasPagadas)} alCambiar={(v) => setCuotasPagadas(v)} />
                     </Campo>
                   )}
                 </>

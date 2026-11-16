@@ -131,6 +131,37 @@ export function rutValido(rut: string): boolean {
   return (resto === 11 ? '0' : resto === 10 ? 'K' : String(resto)) === limpio.slice(-1);
 }
 
+// ---------- Teléfono ----------
+
+/**
+ * Teléfonos chilenos de 9 dígitos (con o sin +56): celulares (9 XXXX XXXX), Santiago (2 XXXX XXXX) y regiones
+ * (código de 2 dígitos + 7). Con "+" y otro código de país se acepta como número extranjero.
+ * Devuelve el número con formato de presentación (+56 9 1234 5678) o null si no es válido.
+ */
+export function analizarTelefono(texto: string): { valor: string; movil: boolean } | null {
+  const s = texto.trim();
+  if (!s) return { valor: '', movil: false };
+  if (/[^\d+\s()-]/.test(s)) return null;
+  let d = s.replace(/\D/g, '');
+  if (s.startsWith('+') && !d.startsWith('56')) return d.length >= 8 && d.length <= 15 ? { valor: `+${d}`, movil: true } : null;
+  if (d.length === 11 && d.startsWith('56')) d = d.slice(2);
+  if (d.length !== 9) return null;
+  if (d[0] === '9') return { valor: `+56 9 ${d.slice(1, 5)} ${d.slice(5)}`, movil: true };
+  if (d[0] === '2') return { valor: `+56 2 ${d.slice(1, 5)} ${d.slice(5)}`, movil: false };
+  if (d[0] === '0' || d[0] === '1') return null;
+  return { valor: `+56 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5)}`, movil: false };
+}
+
+/** Mensaje de error de un teléfono, o null si está bien (vacío también está bien). */
+export function errorTelefono(texto: string, movil = false): string | null {
+  const t = analizarTelefono(texto);
+  if (!t) return movil ? 'Celular inválido: 9 dígitos que empiezan con 9 (ej.: +56 9 1234 5678)' : 'Teléfono inválido: 9 dígitos (ej.: +56 9 1234 5678 o +56 2 2345 6789)';
+  if (movil && t.valor && !t.movil) return 'Debe ser un celular: 9 dígitos que empiezan con 9';
+  return null;
+}
+
+export const correoValido = (s: string) => !s.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());
+
 // ---------- Varios ----------
 
 export const plural = (n: number, singular: string, pluralTexto = `${singular}s`) => `${n} ${n === 1 ? singular : pluralTexto}`;

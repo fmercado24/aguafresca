@@ -4,15 +4,14 @@ import { requiere } from '../auth.js';
 import { registrar } from '../lib/bitacora.js';
 import { detalleVenta } from '../lib/creditos.js';
 import { hoy } from '../lib/fechas.js';
-import { rutValido, normalizarRut } from '../lib/rut.js';
-import { ErrorApp, leer, texto, entero, fecha, opcion, idDe } from '../lib/validar.js';
+import { ErrorApp, leer, texto, entero, fecha, opcion, idDe, rut, telefono, correo } from '../lib/validar.js';
 
 export const rutasClientes = Router();
 
 const esquema = {
-  rut: texto({ max: 15 }),
+  rut: rut(),
   nombre: texto({ req: true, max: 160 }),
-  fecha_nacimiento: fecha(),
+  fecha_nacimiento: fecha({ pasada: true }),
   nacionalidad: texto({ max: 60 }),
   estado_civil: texto({ max: 60 }),
   profesion: texto({ max: 120 }),
@@ -20,8 +19,8 @@ const esquema = {
   comuna: texto({ max: 80 }),
   ciudad: texto({ max: 80 }),
   region: texto({ max: 80 }),
-  telefono: texto({ max: 40 }),
-  email: texto({ max: 160 }),
+  telefono: telefono({ movil: true }),
+  email: correo(),
   empleador: texto({ max: 160 }),
   cargo: texto({ max: 120 }),
   antiguedad_laboral: texto({ max: 60 }),
@@ -29,21 +28,14 @@ const esquema = {
   antecedentes_comerciales: texto({ max: 5000 }),
   referencias: texto({ max: 5000 }),
   aval_nombre: texto({ max: 160 }),
-  aval_rut: texto({ max: 15 }),
-  aval_telefono: texto({ max: 40 }),
+  aval_rut: rut(),
+  aval_telefono: telefono(),
   aval_direccion: texto({ max: 200 }),
   observaciones: texto({ max: 5000 }),
 };
 
-function leerCliente(cuerpo) {
-  const d = leer(cuerpo, esquema);
-  for (const campo of ['rut', 'aval_rut']) {
-    if (!d[campo]) continue;
-    if (!rutValido(d[campo])) throw new ErrorApp(`${campo === 'rut' ? 'RUT' : 'RUT del aval'}: no es válido (revise el dígito verificador)`);
-    d[campo] = normalizarRut(d[campo]);
-  }
-  return d;
-}
+// RUT, teléfonos y correo se validan y se guardan con formato (ver lib/validar.js).
+const leerCliente = (cuerpo) => leer(cuerpo, esquema);
 
 rutasClientes.get('/clientes', (req, res) => {
   const fechaHoy = hoy();
@@ -105,13 +97,37 @@ rutasClientes.get('/clientes/:id', (req, res) => {
   });
 });
 
-rutasClientes.post('/clientes', (req, res) => {
+rutasClientes.post('/clientes', requiere('operaciones'), (req, res) => {
   res.status(201).json({ id: insertar('clientes', leerCliente(req.body)) });
 });
 
-rutasClientes.put('/clientes/:id', (req, res) => {
+rutasClientes.put('/clientes/:id', requiere('operaciones'), (req, res) => {
   if (!actualizar('clientes', idDe(req.params.id), leerCliente(req.body))) throw new ErrorApp('El cliente no existe', 404);
   res.json({ ok: true });
+});
+
+// Datos esenciales (identificación y domicilio): los necesarios para confeccionar promesas y cartas.
+// Los puede completar también el abogado, que no modifica los antecedentes financieros del cliente.
+export const ESENCIALES = {
+  nombre: 'Nombre', rut: 'RUT', fecha_nacimiento: 'Fecha de nacimiento', nacionalidad: 'Nacionalidad', estado_civil: 'Estado civil',
+  profesion: 'Profesión u oficio', direccion: 'Dirección', comuna: 'Comuna', ciudad: 'Ciudad', region: 'Región', telefono: 'Teléfono', email: 'Correo electrónico',
+};
+
+rutasClientes.put('/clientes/:id/esenciales', requiere('clientes_esenciales'), (req, res) => {
+  const id = idDe(req.params.id);
+  const actual = db.get('SELECT * FROM clientes WHERE id = ?', id);
+  if (!actual) throw new ErrorApp('El cliente no existe', 404);
+  const d = leer(req.body, Object.fromEntries(Object.keys(ESENCIALES).map((k) => [k, esquema[k]])));
+  const cambiados = Object.keys(ESENCIALES).filter((k) => String(d[k] ?? '') !== String(actual[k] ?? ''));
+  if (!cambiados.length) return res.json({ ok: true, cambios: 0 });
+  db.tx(() => {
+    actualizar('clientes', id, Object.fromEntries(cambiados.map((k) => [k, d[k]])));
+    registrar(req.usuario.id, {
+      accion: 'cliente_completado', entidad: 'cliente', entidadId: id,
+      detalle: `${d.nombre}: ${cambiados.map((k) => ESENCIALES[k]).join(', ')}`,
+    });
+  });
+  res.json({ ok: true, cambios: cambiados.length });
 });
 
 rutasClientes.delete('/clientes/:id', requiere('administracion'), (req, res) => {
@@ -132,7 +148,7 @@ rutasClientes.delete('/clientes/:id', requiere('administracion'), (req, res) => 
 
 const TIPOS_GESTION = ['llamada', 'whatsapp', 'email', 'carta', 'visita', 'compromiso', 'otro'];
 
-rutasClientes.post('/clientes/:id/gestiones', (req, res) => {
+rutasClientes.post('/clientes/:id/gestiones', requiere('operaciones'), (req, res) => {
   const clienteId = idDe(req.params.id);
   if (!db.get('SELECT id FROM clientes WHERE id = ?', clienteId)) throw new ErrorApp('El cliente no existe', 404);
   const d = leer(req.body, {
@@ -150,7 +166,7 @@ rutasClientes.post('/clientes/:id/gestiones', (req, res) => {
   res.status(201).json({ id });
 });
 
-rutasClientes.delete('/gestiones/:id', (req, res) => {
+rutasClientes.delete('/gestiones/:id', requiere('operaciones'), (req, res) => {
   if (!db.run('DELETE FROM gestiones WHERE id = ?', idDe(req.params.id)).changes) throw new ErrorApp('La gestión no existe', 404);
   res.json({ ok: true });
 });

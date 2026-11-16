@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { Save, Wand2 } from 'lucide-react';
+import { Save, TriangleAlert, UserPen, Wand2 } from 'lucide-react';
 import { api, useDatos } from '../api';
-import { useAvisos } from '../contexto';
+import { useAvisos, useSesion } from '../contexto';
 import { EditorTexto } from '../componentes/EditorTexto';
+import { FormularioCliente } from '../componentes/FormularioCliente';
 import { plural } from '../formato';
-import type { Borrador, PlantillaResumen, TipoDocumento, VentaResumen } from '../tipos';
+import type { Borrador, Cliente, FichaCliente, PlantillaResumen, TipoDocumento, VentaResumen } from '../tipos';
 import { Boton, Campo, Cargando, Encabezado, Entrada, Selector, Tarjeta } from '../ui';
 import { TIPOS_DOCUMENTO } from './Documentos';
 
@@ -25,6 +26,9 @@ export function DocumentoNuevo() {
   const [titulo, setTitulo] = useState('');
   const [contenido, setContenido] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const { puede } = useSesion();
+  // Completar los datos del cliente que el documento necesita (identificación y domicilio).
+  const [completando, setCompletando] = useState<Cliente | null>(null);
 
   const delTipo = (plantillas.datos ?? []).filter((p) => p.tipo === tipo);
 
@@ -42,9 +46,9 @@ export function DocumentoNuevo() {
     .sort((a, b) => (tipo === 'carta_cobranza' ? b.n_atrasadas - a.n_atrasadas : 0));
   const venta = ventas.datos.find((v) => v.id === ventaId);
 
-  async function confeccionar() {
+  async function confeccionar(forzar = false) {
     if (!ventaId || !plantillaId) return avisos.error('Seleccione la venta y la plantilla');
-    if (borrador && contenido !== borrador.contenido && !(await avisos.confirmar({
+    if (!forzar && borrador && contenido !== borrador.contenido && !(await avisos.confirmar({
       titulo: '¿Volver a confeccionar?', mensaje: 'Se perderán los cambios que hizo en el texto.', confirmar: 'Confeccionar de nuevo',
     }))) return;
     setOcupado(true);
@@ -58,6 +62,15 @@ export function DocumentoNuevo() {
       avisos.error(err);
     } finally {
       setOcupado(false);
+    }
+  }
+
+  async function completarCliente() {
+    if (!borrador) return;
+    try {
+      setCompletando((await api.get<FichaCliente>(`/clientes/${borrador.cliente_id}`)).cliente);
+    } catch (err) {
+      avisos.error(err);
     }
   }
 
@@ -101,7 +114,7 @@ export function DocumentoNuevo() {
               {delTipo.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </Selector>
           </Campo>
-          <Boton icono={Wand2} variante={borrador ? 'secundario' : 'primario'} cargando={ocupado && !borrador} onClick={confeccionar}>
+          <Boton icono={Wand2} variante={borrador ? 'secundario' : 'primario'} cargando={ocupado && !borrador} onClick={() => confeccionar()}>
             {borrador ? 'Confeccionar de nuevo' : 'Confeccionar'}
           </Boton>
         </div>
@@ -115,6 +128,15 @@ export function DocumentoNuevo() {
           <Campo etiqueta="Título (para identificarlo en el sistema; no se imprime)">
             <Entrada maxLength={250} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
           </Campo>
+          {(borrador.faltan?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <TriangleAlert className="size-4 shrink-0" />
+              <span className="min-w-56 flex-1">
+                Faltan datos del cliente para este documento: <strong>{borrador.faltan!.join(', ')}</strong>. Saldrán como línea en blanco.
+              </span>
+              {puede('clientes_esenciales') && <Boton chico variante="secundario" icono={UserPen} onClick={completarCliente}>Completar datos del cliente</Boton>}
+            </div>
+          )}
           <p className="text-sm text-stone-600">
             Revise y ajuste el texto. Las líneas en blanco (____) y los corchetes [ ] marcan datos por completar.
           </p>
@@ -124,6 +146,15 @@ export function DocumentoNuevo() {
             <Boton icono={Save} cargando={ocupado} disabled={!titulo.trim()} onClick={guardar}>Guardar documento</Boton>
           </div>
         </div>
+      )}
+
+      {completando && (
+        <FormularioCliente
+          esencial cliente={completando} faltan={borrador?.faltan}
+          alCerrar={() => setCompletando(null)}
+          // Con los datos completos se vuelve a confeccionar el documento.
+          alGuardar={() => { setCompletando(null); confeccionar(true); }}
+        />
       )}
     </>
   );

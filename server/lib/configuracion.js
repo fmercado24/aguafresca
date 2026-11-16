@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { representanteDe } from './datos-personales.js';
 
 // Parámetros generales del sistema, editables desde la pantalla Configuración.
 export const VALORES_INICIALES = {
@@ -12,6 +13,8 @@ export const VALORES_INICIALES = {
     email: '',
     representante: '',
     rut_representante: '',
+    // '' = el representante se escribe a mano; 'ldiaz' o 'pmercado' = se toma de sus datos personales.
+    representante_cuenta: '',
     datos_bancarios: '',
   },
   proyecto: {
@@ -45,8 +48,11 @@ export function guardarSeccion(clave, valor) {
 }
 
 export function leerConfiguracion() {
+  // El representante que ven las pantallas y los documentos es el efectivo (el del perfil del dueño designado).
+  const empresa = leerSeccion('empresa');
+  const rep = representanteDe(empresa);
   return {
-    empresa: leerSeccion('empresa'),
+    empresa: { ...empresa, representante: rep.nombre_completo, rut_representante: rep.rut },
     proyecto: leerSeccion('proyecto'),
     credito: leerSeccion('credito'),
     plano: leerSeccion('plano'),

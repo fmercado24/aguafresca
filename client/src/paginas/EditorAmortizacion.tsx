@@ -6,7 +6,7 @@ import { useAvisos, useSesion } from '../contexto';
 import { fecha, pesos, plural, porcentaje, sumarMeses } from '../formato';
 import type { Simulacion, VentaDetalle } from '../tipos';
 import {
-  AreaTexto, Boton, Campo, Cargando, Encabezado, Entrada, EntradaMonto, ErrorCarga, Modal, Selector, Tarjeta, Vacio, num, td, th,
+  AreaTexto, Boton, Campo, Cargando, Encabezado, Entrada, EntradaMonto, ErrorCarga, Modal, Selector, Tarjeta, Vacio, num, td, th, EntradaEntero, EntradaDecimal,
 } from '../ui';
 
 // Editor libre de la tabla de amortización (contador y super administrador).
@@ -208,7 +208,7 @@ function Formulario({ d }: { d: VentaDetalle }) {
                 <Entrada type="date" disabled={e.pie === 0} value={e.pie === 0 ? '' : e.fechaPie} onChange={(ev) => setE({ ...e, fechaPie: ev.target.value })} />
               </Campo>
               <Campo etiqueta="Tasa mensual (%)" ayuda="Se muestra en la venta y en los documentos.">
-                <Entrada type="number" inputMode="decimal" min={0} max={15} step="0.01" value={e.tasa} onChange={(ev) => setE({ ...e, tasa: ev.target.value })} />
+                <EntradaDecimal valor={String(e.tasa)} alCambiar={(v) => setE({ ...e, tasa: v })} />
               </Campo>
             </div>
             <p className="mt-3 text-sm text-stone-600">Saldo a crédito: <strong className="tabular-nums text-stone-900">{pesos(c.financiado)}</strong></p>
@@ -397,13 +397,13 @@ function HerramientaRecalcular({ e, setE, financiado, nuevaClave }: { e: Estado;
         <p className="text-xs text-stone-500">Para renegociar: cambia la tasa o el número de cuotas del capital que queda, con cuota fija.</p>
         <div className="grid grid-cols-2 gap-3">
           <Campo etiqueta="Desde la cuota">
-            <Entrada type="number" min={1} max={e.filas.length + 1} value={desdeValido} onChange={(ev) => setDesde(Number(ev.target.value))} />
+            <EntradaEntero valor={String(desdeValido)} alCambiar={(v) => setDesde(Number(v) || 1)} />
           </Campo>
           <Campo etiqueta="N° de cuotas">
-            <Entrada type="number" min={1} max={360} placeholder={String(Math.max(1, restantes))} value={n} onChange={(ev) => setN(ev.target.value)} />
+            <EntradaEntero placeholder={String(Math.max(1, restantes))} valor={n} alCambiar={setN} />
           </Campo>
           <Campo etiqueta="Tasa mensual (%)">
-            <Entrada type="number" inputMode="decimal" min={0} max={15} step="0.01" value={tasa} onChange={(ev) => setTasa(ev.target.value)} />
+            <EntradaDecimal valor={tasa} alCambiar={setTasa} />
           </Campo>
           <Campo etiqueta="Vence la primera">
             <Entrada type="date" value={primera || e.filas[desdeValido - 1]?.fecha || ''} onChange={(ev) => setPrimera(ev.target.value)} />
@@ -453,10 +453,10 @@ function HerramientaVencimientos({ e, setE }: { e: Estado; setE: (x: Estado) => 
       <form onSubmit={aplicar} className="space-y-3">
         <div className="grid grid-cols-3 gap-3">
           <Campo etiqueta="Desde la cuota">
-            <Entrada type="number" min={1} max={e.filas.length} value={desde} onChange={(ev) => setDesde(Number(ev.target.value))} />
+            <EntradaEntero valor={String(desde)} alCambiar={(v) => setDesde(Number(v) || 1)} />
           </Campo>
           <Campo etiqueta="Correr meses">
-            <Entrada type="number" min={-120} max={120} value={meses} onChange={(ev) => setMeses(ev.target.value)} />
+            <EntradaEntero negativos valor={meses} alCambiar={setMeses} />
           </Campo>
           <Campo etiqueta="Nuevo día">
             <Selector value={dia} onChange={(ev) => setDia(ev.target.value)}>

@@ -1,10 +1,77 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Download, HandCoins, Plus } from 'lucide-react';
-import { useDatos } from '../api';
-import { descargarCsv, fecha, formatearRut, pesos, plural } from '../formato';
-import type { VentaResumen } from '../tipos';
-import { Boton, Buscador, Carga, Encabezado, EnlaceBoton, InsigniaVenta, Tabla, Tarjeta, Vacio, num, td, th } from '../ui';
+import { BellRing, Download, HandCoins, Plus, X } from 'lucide-react';
+import { api, useDatos } from '../api';
+import { useAvisos, useSesion } from '../contexto';
+import { descargarCsv, fecha, fechaHoraRegistro, formatearRut, pesos, plural } from '../formato';
+import type { SolicitudVenta, VentaResumen } from '../tipos';
+import { AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, InsigniaVenta, Modal, Tabla, Tarjeta, Vacio, num, td, th } from '../ui';
+
+// ---------- Ventas que informó el abogado y falta registrar ----------
+
+function VentasInformadas() {
+  const avisos = useAvisos();
+  const opera = useSesion().puede('operaciones');
+  const consulta = useDatos<SolicitudVenta[]>('/solicitudes-venta');
+  const [descartando, setDescartando] = useState<SolicitudVenta | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const pendientes = consulta.datos ?? [];
+  if (!pendientes.length) return null;
+
+  async function descartar() {
+    if (!descartando || !motivo.trim()) return;
+    setGuardando(true);
+    try {
+      await api.post(`/solicitudes-venta/${descartando.id}/descartar`, { motivo });
+      avisos.ok('Aviso descartado; se le informó a quien lo envió');
+      setDescartando(null);
+      setMotivo('');
+      consulta.recargar();
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Tarjeta titulo={<span className="flex items-center gap-2"><BellRing className="size-4 text-marca-700" /> Ventas informadas por registrar ({pendientes.length})</span>} className="mb-4" relleno={false}>
+      <ul className="divide-y divide-stone-100">
+        {pendientes.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
+            <div className="min-w-56 flex-1 text-sm">
+              <div className="font-medium text-stone-900">Parcela {s.parcela} · {s.comprador}</div>
+              <div className="text-stone-600">
+                {s.n_cuotas > 0 ? `${pesos(s.precio)}: pie ${pesos(s.pie)} y ${s.n_cuotas} cuotas de ${pesos(s.valor_cuota)}` : `${pesos(s.precio)} al contado`}
+                {' · '}<Link to={`/cotizaciones/${s.cotizacion_id}`} className="text-marca-700 hover:underline">cotización N° {s.cotizacion_id}</Link>
+              </div>
+              <div className="text-xs text-stone-500">Informada por {s.informada_por ?? '—'} el {fechaHoraRegistro(s.creado_en)}{s.reservo_parcela ? ' · parcela reservada' : ''}</div>
+              {s.notas && <div className="mt-1 text-stone-700">{s.notas}</div>}
+            </div>
+            {opera && (
+              <div className="flex gap-2">
+                <EnlaceBoton chico icono={HandCoins} to={`/ventas/nueva?cotizacion=${s.cotizacion_id}`}>Registrar venta</EnlaceBoton>
+                <Boton chico variante="fantasma" icono={X} onClick={() => setDescartando(s)}>Descartar</Boton>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {descartando && (
+        <Modal
+          abierto alCerrar={() => setDescartando(null)} titulo={`¿No registrar la venta de la parcela ${descartando.parcela}?`} ancho="sm"
+          pie={<><Boton variante="secundario" onClick={() => setDescartando(null)}>Cancelar</Boton><Boton variante="peligro" cargando={guardando} disabled={!motivo.trim()} onClick={descartar}>Descartar aviso</Boton></>}
+        >
+          <Campo etiqueta="Motivo (se le informa a quien envió el aviso)">
+            <AreaTexto rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: el cliente desistió." />
+          </Campo>
+          {descartando.reservo_parcela ? <p className="mt-2 text-sm text-stone-600">La reserva que hizo el aviso se libera.</p> : null}
+        </Modal>
+      )}
+    </Tarjeta>
+  );
+}
 
 type Filtro = 'todas' | 'vigentes' | 'atraso' | 'pagadas' | 'anuladas';
 
@@ -17,6 +84,7 @@ const FILTROS: { id: Filtro; etiqueta: string; aplica: (v: VentaResumen) => bool
 ];
 
 export function Ventas() {
+  const opera = useSesion().puede('operaciones');
   const navegar = useNavigate();
   const consulta = useDatos<VentaResumen[]>('/ventas');
   const [filtro, setFiltro] = useState<Filtro>('todas');
@@ -37,14 +105,16 @@ export function Ventas() {
         titulo="Ventas"
         descripcion={consulta.datos ? `${plural(ventas.filter((v) => v.estado !== 'anulada').length, 'venta')} · ${plural(vigentes.length, 'crédito vigente', 'créditos vigentes')} por ${pesos(vigentes.reduce((s, v) => s + v.saldo, 0))}` : undefined}
       >
-        <EnlaceBoton to="/ventas/nueva" icono={Plus}>Nueva venta</EnlaceBoton>
+        {opera && <EnlaceBoton to="/ventas/nueva" icono={Plus}>Nueva venta</EnlaceBoton>}
       </Encabezado>
+
+      <VentasInformadas />
 
       <Carga consulta={consulta}>
         {() =>
           ventas.length === 0 ? (
             <Tarjeta>
-              <Vacio icono={HandCoins} titulo="Aún no hay ventas" accion={<EnlaceBoton to="/ventas/nueva" icono={Plus}>Registrar la primera venta</EnlaceBoton>}>
+              <Vacio icono={HandCoins} titulo="Aún no hay ventas" accion={opera && <EnlaceBoton to="/ventas/nueva" icono={Plus}>Registrar la primera venta</EnlaceBoton>}>
                 Al registrar una venta a crédito el sistema genera el calendario de cuotas con su tabla de amortización.
               </Vacio>
             </Tarjeta>

@@ -1,5 +1,5 @@
 // Convierte el plano del loteo (AutoCAD .dwg + Google Earth .kmz) al archivo que usa el sistema:
-// server/datos/loteo.json con el contorno, número, sector, superficie y deslindes de cada lote,
+// server/datos/loteo.json con el contorno, número, manzana, superficie y deslindes de cada lote,
 // el dibujo de fondo (caminos, río, deslinde del fundo) y la georreferencia para Google Maps.
 //
 // Uso (solo cuando el topógrafo entrega un plano nuevo):
@@ -118,7 +118,7 @@ for (const l of lotes) {
   l.declarada = distintas[0] ?? null;
 }
 
-// ---------- 4. Sectores: cada numeración que parte en 1 ----------
+// ---------- 4. Manzanas: cada numeración que parte en 1 ----------
 // Se une cada lote n con el lote n+1 más cercano; las cadenas que quedan separadas por pocos metros
 // (p. ej. una corrida de lotes que sigue en la manzana del lado) se vuelven a juntar después.
 
@@ -171,13 +171,13 @@ for (const c of cadenas) {
   const n = c.map((l) => l.n);
   if (new Set(n).size !== n.length) problemas.push(`Una numeración repite números: ${n.join(',')}`);
 }
-// Sectores con letras, de poniente a oriente según su centro.
+// Manzanas con letras, de poniente a oriente según su centro.
 const centroX = (c) => c.reduce((s, l) => s + l.punto.x, 0) / c.length;
 cadenas.sort((a, b) => centroX(a) - centroX(b));
 const sectores = cadenas.map((c, i) => {
   const letra = String.fromCharCode(65 + i);
   for (const l of c) { l.letra = letra; cadenaDe.set(l, i); }
-  return { letra, nombre: `Sector ${letra}`, lotes: c.length };
+  return { letra, nombre: `Manzana ${letra}`, lotes: c.length };
 });
 const codigo = (l) => `${l.letra}-${l.n}`;
 
@@ -472,7 +472,7 @@ const salida = {
     .sort((a, b) => a.letra.localeCompare(b.letra) || a.n - b.n)
     .map((l) => ({
       codigo: codigo(l),
-      sector: `Sector ${l.letra}`,
+      sector: `Manzana ${l.letra}`,
       numero: l.n,
       superficie_m2: l.declarada ?? Math.round(l.cara.area),
       superficie_anotada: l.declarada !== null,
@@ -490,7 +490,7 @@ fs.mkdirSync(path.dirname(SALIDA), { recursive: true });
 fs.writeFileSync(SALIDA, JSON.stringify(salida));
 
 console.log(`Listo: ${path.relative(RAIZ, SALIDA)} (${Math.round(fs.statSync(SALIDA).size / 1024)} KB)`);
-console.log(`  ${salida.lotes.length} lotes en ${sectores.length} sectores: ${sectores.map((s) => `${s.letra} (${s.lotes})`).join(', ')}`);
+console.log(`  ${salida.lotes.length} lotes en ${sectores.length} manzanas: ${sectores.map((s) => `${s.letra} (${s.lotes})`).join(', ')}`);
 console.log(`  ${uniones.length} uniones completadas en el dibujo; lienzo ${ANCHO} × ${ALTO} (1 unidad = ${salida.metros_por_unidad.toFixed(3)} m)`);
 console.log(georreferencia ? `  Georreferencia con ${georreferencia.puntos} puntos del KMZ (error máximo ${errorGeo.toFixed(2)} m)` : '  Sin georreferencia');
 if (problemas.length) console.log(`\nRevisar:\n  - ${problemas.join('\n  - ')}`);

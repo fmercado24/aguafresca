@@ -296,6 +296,7 @@ function Detalle({ id }: { id: number }) {
   const { puede } = useSesion();
   const contable = puede('contabilidad');
   const editaTabla = puede('amortizacion');
+  const opera = puede('operaciones');
   const avisos = useAvisos();
   const config = useConfig();
   const navegar = useNavigate();
@@ -310,11 +311,11 @@ function Detalle({ id }: { id: number }) {
 
   // Permite llegar desde otra pantalla directo al registro de pago (…?pago=1).
   useEffect(() => {
-    if (params.get('pago') && consulta.datos?.venta.estado === 'vigente') {
+    if (params.get('pago') && opera && consulta.datos?.venta.estado === 'vigente') {
       setPagando(true);
       setParams({}, { replace: true });
     }
-  }, [params, setParams, consulta.datos]);
+  }, [params, setParams, consulta.datos, opera]);
 
   const recargarTodo = () => {
     consulta.recargar();
@@ -380,7 +381,7 @@ function Detalle({ id }: { id: number }) {
               </>
             }
           >
-            {vigente && <Boton icono={Banknote} onClick={() => setPagando(true)}>Registrar pago</Boton>}
+            {vigente && opera && <Boton icono={Banknote} onClick={() => setPagando(true)}>Registrar pago</Boton>}
             {v.estado !== 'anulada' && <EnlaceBoton variante="secundario" icono={FileSignature} to={`/documentos/nuevo?tipo=promesa&venta=${id}`}>Promesa</EnlaceBoton>}
             {vigente && t.n_atrasadas > 0 && <EnlaceBoton variante="secundario" icono={FileText} to={`/documentos/nuevo?tipo=carta_cobranza&venta=${id}`}>Carta de cobranza</EnlaceBoton>}
             {editaTabla && v.estado !== 'anulada' && <EnlaceBoton variante="secundario" icono={Sheet} to={`/ventas/${id}/tabla`}>Editar tabla</EnlaceBoton>}
@@ -495,7 +496,7 @@ function Detalle({ id }: { id: number }) {
           {pestana === 'pagos' && (
             <Tarjeta relleno={false}>
               {pagos.length === 0 ? (
-                <Vacio icono={Receipt} titulo="Sin pagos registrados" accion={vigente && <Boton icono={Banknote} onClick={() => setPagando(true)}>Registrar pago</Boton>} />
+                <Vacio icono={Receipt} titulo="Sin pagos registrados" accion={vigente && opera && <Boton icono={Banknote} onClick={() => setPagando(true)}>Registrar pago</Boton>} />
               ) : (
                 <Tabla>
                   <thead>

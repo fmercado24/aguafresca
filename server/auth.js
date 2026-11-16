@@ -76,42 +76,75 @@ export function autenticar(req, res, next) {
 
 export const CUENTAS = [
   { usuario: 'admin', nombre: 'Administrador', rol: 'superadmin' },
-  { usuario: 'ldiaz', nombre: 'L. Díaz', rol: 'abogado' },
-  { usuario: 'pmercado', nombre: 'P. Mercado', rol: 'contador' },
+  { usuario: 'ldiaz', nombre: 'Luis Díaz', rol: 'abogado' },
+  { usuario: 'pmercado', nombre: 'Patricio Mercado', rol: 'contador' },
 ];
 
 export const PERFILES = { superadmin: 'Super administrador', abogado: 'Abogado', contador: 'Contador' };
 
-// Todas las cuentas tienen las funciones básicas (clientes, ventas, pagos, cotizaciones, visitas,
-// confeccionar documentos, reservar parcelas). Además:
-//   empresa        datos sensibles de la empresa y el proyecto (RUT, representante, banco, inscripción)
-//   parcelas       crear parcelas, cambiar precios, editar el mapa
-//   administracion contraseñas y nombres de las cuentas, registro de cambios, eliminar clientes
-//   plantillas     modificar las plantillas de documentos legales
-//   amortizacion   modificar la tabla de amortización de una venta
-//   contabilidad   tasas de interés y mora, corregir o anular pagos, anular ventas
+// Todas las cuentas ven todo: parcelas, clientes y deudores, ventas, cobranza, flujo e informes. Para modificar:
+//   operaciones      clientes y su ficha completa, gestiones de cobranza, ventas, registrar pagos, reservar parcelas
+//   cotizaciones     crear y modificar cotizaciones
+//   informar_ventas  avisar al contador una venta cerrada (a partir de una cotización) para que él la registre
+//   clientes_esenciales  completar los datos esenciales de un cliente (identificación y domicilio) para los documentos
+//   visitas          agendar visitas (a su nombre)
+//   visitas_todas    modificar también las visitas que agendaron otras personas y elegir quién atiende
+//   documentos       confeccionar documentos (cartas y promesas) y enviar cartas de cobranza
+//   empresa          datos sensibles de la empresa y el proyecto; correo para enviar cartas
+//   parcelas         crear parcelas, sectores y códigos, editar el mapa
+//   precios          cambiar el precio de lista de las parcelas (una o en bloque)
+//   administracion   contraseñas y nombres de las cuentas, registro de cambios completo, eliminar clientes
+//   plantillas       modificar las plantillas de documentos legales
+//   amortizacion     modificar la tabla de amortización de una venta
+//   contabilidad     tasas de interés y mora, corregir o anular pagos, anular ventas, envío programado de cartas
+// Los dueños (ldiaz y pmercado) tienen además:
+//   registro_duenos  ver el registro de los cambios que hacen los dueños
+//   datos_personales completar sus datos personales, que se usan en los documentos legales
+//   avisos_visitas   avisos en la aplicación de las visitas agendadas
 export const PERMISOS = {
-  superadmin: ['empresa', 'parcelas', 'administracion', 'plantillas', 'amortizacion', 'contabilidad'],
-  abogado: ['plantillas'],
-  contador: ['amortizacion', 'contabilidad'],
+  superadmin: ['operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'empresa', 'parcelas', 'precios', 'administracion', 'plantillas', 'amortizacion', 'contabilidad'],
+  // El abogado ve todo, pero no registra nada que tenga que ver con dinero: cotiza, informa al contador las ventas que cierra,
+  // completa los datos esenciales de los clientes, agenda visitas a su nombre y trabaja los documentos legales.
+  abogado: ['cotizaciones', 'informar_ventas', 'clientes_esenciales', 'visitas', 'documentos', 'plantillas', 'registro_duenos', 'datos_personales', 'avisos_visitas'],
+  contador: ['operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'amortizacion', 'contabilidad', 'precios', 'registro_duenos', 'datos_personales', 'avisos_visitas'],
 };
 
+/** Perfiles de las cuentas de los dueños. */
+export const ROLES_DUENOS = Object.keys(PERMISOS).filter((rol) => PERMISOS[rol].includes('datos_personales'));
+
 const QUIEN_PUEDE = {
+  operaciones: 'el contador o el super administrador',
+  cotizaciones: 'el abogado, el contador o el super administrador',
+  informar_ventas: 'el abogado',
+  clientes_esenciales: 'el abogado, el contador o el super administrador',
+  visitas: 'cualquier cuenta',
+  visitas_todas: 'el contador o el super administrador (el abogado modifica solo las visitas que agendó)',
+  documentos: 'cualquier cuenta',
+  avisos_visitas: 'los dueños',
   empresa: 'el super administrador',
   parcelas: 'el super administrador',
+  precios: 'el contador o el super administrador',
   administracion: 'el super administrador',
   plantillas: 'el abogado o el super administrador',
   amortizacion: 'el contador o el super administrador',
   contabilidad: 'el contador o el super administrador',
+  registro_duenos: 'los dueños',
+  datos_personales: 'los dueños (cada uno los suyos)',
 };
 
 export const puede = (usuario, permiso) => !!usuario && (PERMISOS[usuario.rol] ?? []).includes(permiso);
+
+/** Lanza el error 403 si la cuenta no tiene el permiso (para revisar dentro de una ruta). */
+export function exigir(usuario, permiso) {
+  if (!QUIEN_PUEDE[permiso]) throw new Error(`Permiso desconocido: ${permiso}`);
+  if (!puede(usuario, permiso)) throw new ErrorApp(`Esta acción solo la puede realizar ${QUIEN_PUEDE[permiso]}`, 403);
+}
 
 /** Middleware: deja pasar solo a las cuentas que tienen el permiso indicado. */
 export function requiere(permiso) {
   if (!QUIEN_PUEDE[permiso]) throw new Error(`Permiso desconocido: ${permiso}`);
   return (req, res, next) => {
-    if (!puede(req.usuario, permiso)) throw new ErrorApp(`Esta acción solo la puede realizar ${QUIEN_PUEDE[permiso]}`, 403);
+    exigir(req.usuario, permiso);
     next();
   };
 }

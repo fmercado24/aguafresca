@@ -23,7 +23,10 @@ export function FichaClientePagina() {
 }
 
 function Ficha({ id }: { id: number }) {
-  const esAdmin = useSesion().puede('administracion');
+  const { puede } = useSesion();
+  const esAdmin = puede('administracion');
+  const opera = puede('operaciones');
+  const completa = !opera && puede('clientes_esenciales');
   const avisos = useAvisos();
   const navegar = useNavigate();
   const consulta = useDatos<FichaCliente>(`/clientes/${id}`);
@@ -78,7 +81,8 @@ function Ficha({ id }: { id: number }) {
                 }
               >
                 <Boton variante="secundario" icono={Printer} onClick={() => window.print()}>Imprimir ficha</Boton>
-                <Boton variante="secundario" icono={Pencil} onClick={() => setEditando(true)}>Editar</Boton>
+                {opera && <Boton variante="secundario" icono={Pencil} onClick={() => setEditando(true)}>Editar</Boton>}
+                {completa && <Boton variante="secundario" icono={Pencil} onClick={() => setEditando(true)}>Completar datos</Boton>}
                 {esAdmin && f.ventas.length === 0 && <Boton variante="fantasma" icono={Trash2} onClick={() => eliminar(c.nombre)} aria-label="Eliminar cliente" />}
               </Encabezado>
 
@@ -113,7 +117,7 @@ function Ficha({ id }: { id: number }) {
                 <div className="space-y-4">
                   {f.ventas.length === 0 && (
                     <Tarjeta>
-                      <Vacio titulo="Este cliente aún no tiene compras" accion={<EnlaceBoton to={`/ventas/nueva?cliente=${id}`} icono={Plus}>Registrar venta</EnlaceBoton>} />
+                      <Vacio titulo="Este cliente aún no tiene compras" accion={opera && <EnlaceBoton to={`/ventas/nueva?cliente=${id}`} icono={Plus}>Registrar venta</EnlaceBoton>} />
                     </Tarjeta>
                   )}
                   {f.ventas.map((v) => {
@@ -171,7 +175,7 @@ function Ficha({ id }: { id: number }) {
                       </Tarjeta>
                     );
                   })}
-                  {f.ventas.length > 0 && <EnlaceBoton variante="secundario" icono={Plus} to={`/ventas/nueva?cliente=${id}`}>Registrar otra venta</EnlaceBoton>}
+                  {opera && f.ventas.length > 0 && <EnlaceBoton variante="secundario" icono={Plus} to={`/ventas/nueva?cliente=${id}`}>Registrar otra venta</EnlaceBoton>}
                 </div>
               )}
 
@@ -218,7 +222,7 @@ function Ficha({ id }: { id: number }) {
                           Carta{conAtraso.length > 1 ? ` parcela ${v.parcela}` : ' de cobranza'}
                         </EnlaceBoton>
                       ))}
-                      <Boton chico icono={Plus} onClick={() => setGestionando(true)}>Registrar gestión</Boton>
+                      {opera && <Boton chico icono={Plus} onClick={() => setGestionando(true)}>Registrar gestión</Boton>}
                     </>
                   }
                   relleno={false}
@@ -242,9 +246,9 @@ function Ficha({ id }: { id: number }) {
                               </p>
                             )}
                           </div>
-                          <button onClick={() => borrarGestion(g)} aria-label="Borrar gestión" className="self-start rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-red-700">
+                          {opera && <button onClick={() => borrarGestion(g)} aria-label="Borrar gestión" className="self-start rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-red-700">
                             <Trash2 className="size-4" />
-                          </button>
+                          </button>}
                         </li>
                       ))}
                     </ul>
@@ -300,7 +304,7 @@ function Ficha({ id }: { id: number }) {
 
             <FichaImpresa f={f} />
 
-            {editando && <FormularioCliente cliente={c} alCerrar={() => setEditando(false)} alGuardar={() => { setEditando(false); consulta.recargar(); }} />}
+            {editando && <FormularioCliente esencial={completa} cliente={c} alCerrar={() => setEditando(false)} alGuardar={() => { setEditando(false); consulta.recargar(); }} />}
             {gestionando && (
               <FormularioGestion
                 clienteId={id}

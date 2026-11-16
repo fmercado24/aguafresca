@@ -8,6 +8,7 @@ import { asegurarPlantillasBase } from './rutas/documentos.js';
 import { guardarSeccion, leerSeccion } from './lib/configuracion.js';
 import { crearVenta, registrarPago } from './lib/creditos.js';
 import { importarLoteo } from './lib/loteo.js';
+import { informarVenta } from './lib/solicitudes.js';
 import { confeccionar } from './lib/plantillas.js';
 import { simular } from './rutas/ventas.js';
 import { hoy, sumarDias, sumarMeses } from './lib/fechas.js';
@@ -24,6 +25,8 @@ asegurarPlantillasBase();
 
 const HOY = hoy();
 const admin = db.get("SELECT id FROM usuarios WHERE usuario = 'admin'").id;
+const luis = db.get("SELECT id FROM usuarios WHERE usuario = 'ldiaz'").id;
+const patricio = db.get("SELECT id FROM usuarios WHERE usuario = 'pmercado'").id;
 
 db.tx(() => {
   // ---------- Parámetros ----------
@@ -103,6 +106,17 @@ db.tx(() => {
   venta({ parcela: 'I-31', cliente: 0, pie: 20, cuotas: 24, tasa: 1.2, vencidas: 5, ultima: -18, pagadas: 5, descuento: 1_000_000 });
   const v10 = venta({ parcela: 'I-36', cliente: 8, pie: 20, cuotas: 36, tasa: 1, vencidas: 2, ultima: 5, pagadas: 0, piePagado: false }); // pie a medio pagar
 
+  // Venta calculada por monto de cuota: $400.000 cerrados y la última, menor.
+  {
+    const precio = db.get('SELECT precio FROM parcelas WHERE id = ?', parcelas['I-44']).precio;
+    crearVenta({
+      parcela_id: parcelas['I-44'], cliente_id: clientes[9], vendedor_id: patricio, fecha: sumarDias(HOY, -20), precio,
+      pie: Math.round((precio * 0.2) / 100_000) * 100_000, cuota_objetivo: 400_000, tasa_mensual: 1,
+      fecha_primera_cuota: sumarMeses(sumarDias(HOY, -20), 1), pie_pagado: true, medio_pie: 'transferencia',
+      observaciones: 'Venta ficticia de demostración: cuotas de $400.000.',
+    }, patricio);
+  }
+
   const cuotaDe = (id) => db.get('SELECT valor_cuota, pie, fecha FROM ventas WHERE id = ?', id);
   registrarPago(v4, { fecha: sumarDias(HOY, -1), monto: Math.round(cuotaDe(v4).valor_cuota / 2 / 1000) * 1000, medio: 'transferencia', comprobante: 'TRF-DEMO-104', observacion: 'Abono a la cuota del mes' }, admin);
   registrarPago(v10, { fecha: cuotaDe(v10).fecha, monto: Math.round(cuotaDe(v10).pie / 2), medio: 'deposito', comprobante: 'DEP-DEMO-221', observacion: 'Abono al pie' }, admin);
@@ -118,7 +132,7 @@ db.tx(() => {
   gestion(v6, 22, 'whatsapp', 'Se envía recordatorio con el detalle de cuotas atrasadas. Mensaje leído, sin respuesta.');
 
   const plantillaCarta = db.get("SELECT id FROM plantillas WHERE tipo = 'carta_cobranza' ORDER BY id LIMIT 1 OFFSET 1");
-  const carta = confeccionar(plantillaCarta.id, v6);
+  const { faltan: _faltan, ...carta } = confeccionar(plantillaCarta.id, v6);
   insertar('documentos', { ...carta, usuario_id: admin });
   gestion(v6, 0, 'carta', `Se emitió carta: ${carta.titulo}`);
 
@@ -130,7 +144,7 @@ db.tx(() => {
       precio: p.precio - descuento, pie: Math.round(((p.precio - descuento) * pie) / 100 / 100_000) * 100_000,
       n_cuotas: cuotas, tasa_mensual: tasa, fecha_primera_cuota: sumarMeses(fecha, 1),
     };
-    insertar('cotizaciones', {
+    return insertar('cotizaciones', {
       ...d, fecha, valida_hasta: sumarDias(fecha, 15), parcela_id: parcelas[parcela],
       cliente_id: cliente === undefined ? null : clientes[cliente],
       contacto_nombre: contacto, contacto_telefono: telefono, precio_lista: p.precio, descuento,
@@ -141,21 +155,26 @@ db.tx(() => {
   cotizar({ parcela: 'I-2', contacto: 'Tomás Aguilera (interesado)', telefono: '+56 9 5550 0201', dias: 2, pie: 20, cuotas: 36, tasa: 1 });
   cotizar({ parcela: 'I-9', cliente: 9, contacto: PERSONAS[9][0], telefono: '+56 9 5550 0119', dias: 6, pie: 30, cuotas: 24, tasa: 1, descuento: 500_000 });
   cotizar({ parcela: 'I-14', contacto: 'Familia Castro Lagos (interesados)', telefono: '+56 9 5550 0202', dias: 32, pie: 20, cuotas: 48, tasa: 1.2 });
+  // Venta que cerró Luis (abogado) a partir de su cotización y que Patricio (contador) aún debe registrar.
+  const cotizacionLuis = cotizar({ parcela: 'E-5', contacto: 'Rosa Vidal Paz', telefono: '+56 9 5550 0306', dias: 1, pie: 25, cuotas: 36, tasa: 1 });
+  db.run('UPDATE cotizaciones SET usuario_id = ? WHERE id = ?', luis, cotizacionLuis);
+  informarVenta(cotizacionLuis, { notas: 'Firmó hoy la promesa; paga el pie por transferencia el lunes.', reservar: true }, { id: luis, nombre: 'Luis Díaz', rol: 'abogado' });
 
   // ---------- Visitas ----------
-  const visita = (dias, hora, nombre, telefono, lotes, estado = 'programada', notas = '') =>
+  // Agendadas por Luis (abogado) o Patricio (contador), que además las atienden.
+  const visita = (por, dias, hora, nombre, telefono, lotes, estado = 'programada', notas = '') =>
     insertar('visitas', {
       inicio: `${sumarDias(HOY, dias)}T${hora}`, duracion_min: 60, nombre, telefono,
-      parcela_ids: JSON.stringify(lotes.map((l) => parcelas[l])), vendedor_id: admin, estado, notas,
+      parcela_ids: JSON.stringify(lotes.map((l) => parcelas[l])), vendedor_id: por, creado_por: por, estado, notas,
     });
-  visita(-7, '11:00', 'Marcela Ibáñez', '+56 9 5550 0301', ['I-2', 'I-4'], 'no_asistio', 'Avisó tarde; pidió reagendar.');
-  visita(-3, '16:00', 'Familia Castro Lagos', '+56 9 5550 0202', ['I-14', 'I-16'], 'realizada', 'Les gustó el lote I-14. Evaluarán financiamiento.');
-  visita(0, '15:30', 'Tomás Aguilera', '+56 9 5550 0201', ['I-2'], 'confirmada', 'Viene con su pareja. Llevar cotización impresa.');
-  visita(1, '10:00', 'Andrea Pizarro', '+56 9 5550 0302', ['I-77', 'I-80', 'I-81'], 'programada', 'Interesada en lotes junto al río.');
-  visita(1, '15:30', 'Cristóbal Mena', '+56 9 5550 0303', ['B-24', 'B-26']);
-  visita(3, '12:00', PERSONAS[9][0], '+56 9 5550 0119', ['I-9'], 'confirmada', 'Segunda visita; quiere revisar deslindes.');
-  visita(6, '11:00', 'Valentina Rojas', '+56 9 5550 0304', ['I-33', 'I-34', 'I-35']);
-  visita(9, '16:30', 'Ignacio Paredes', '+56 9 5550 0305', ['I-38']);
+  visita(patricio, -7, '11:00', 'Marcela Ibáñez', '+56 9 5550 0301', ['I-2', 'I-4'], 'no_asistio', 'Avisó tarde; pidió reagendar.');
+  visita(luis, -3, '16:00', 'Familia Castro Lagos', '+56 9 5550 0202', ['I-14', 'I-16'], 'realizada', 'Les gustó el lote I-14. Evaluarán financiamiento.');
+  visita(patricio, 0, '15:30', 'Tomás Aguilera', '+56 9 5550 0201', ['I-2'], 'confirmada', 'Viene con su pareja. Llevar cotización impresa.');
+  visita(luis, 1, '10:00', 'Andrea Pizarro', '+56 9 5550 0302', ['I-77', 'I-80', 'I-81'], 'programada', 'Interesada en lotes junto al río.');
+  visita(patricio, 1, '15:30', 'Cristóbal Mena', '+56 9 5550 0303', ['B-24', 'B-26']);
+  visita(luis, 3, '12:00', PERSONAS[9][0], '+56 9 5550 0119', ['I-9'], 'confirmada', 'Segunda visita; quiere revisar deslindes.');
+  visita(patricio, 6, '11:00', 'Valentina Rojas', '+56 9 5550 0304', ['I-33', 'I-34', 'I-35']);
+  visita(luis, 9, '16:30', 'Ignacio Paredes', '+56 9 5550 0305', ['I-38']);
 });
 
 const resumen = db.get(`SELECT (SELECT COUNT(*) FROM parcelas) AS parcelas, (SELECT COUNT(*) FROM clientes) AS clientes,

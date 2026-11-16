@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, insertar, actualizar } from '../db.js';
 import { config } from '../config.js';
-import { requiere } from '../auth.js';
+import { requiere, exigir } from '../auth.js';
 import { registrar, diferencias, describirCambios } from '../lib/bitacora.js';
 import { pesos } from '../lib/finanzas.js';
 import { leerSeccion, guardarSeccion } from '../lib/configuracion.js';
 import { resumenLoteo, importarLoteo } from '../lib/loteo.js';
-import { ErrorApp, leer, texto, entero, decimal, opcion, idDe } from '../lib/validar.js';
+import { ErrorApp, leer, texto, entero, decimal, opcion, idDe, rolSii } from '../lib/validar.js';
 
 export const rutasParcelas = Router();
 
@@ -20,7 +20,7 @@ const esquema = {
   superficie_m2: decimal({ req: true, min: 0, max: 100_000_000 }),
   precio: entero({ req: true, min: 0 }),
   estado: opcion(ESTADOS),
-  rol_sii: texto({ max: 40 }),
+  rol_sii: rolSii(),
   deslindes: texto({ max: 3000 }),
   descripcion: texto({ max: 3000 }),
 };
@@ -56,7 +56,7 @@ rutasParcelas.put('/parcelas/:id', requiere('parcelas'), (req, res) => {
   }
   const cambios = diferencias(
     { ...actual, precio: pesos(actual.precio) }, { ...d, precio: pesos(d.precio) },
-    { numero: 'Número', sector: 'Sector', superficie_m2: 'Superficie m²', precio: 'Precio', estado: 'Estado', rol_sii: 'Rol SII', deslindes: 'Deslindes' },
+    { numero: 'Número', sector: 'Manzana', superficie_m2: 'Superficie m²', precio: 'Precio', estado: 'Estado', rol_sii: 'Rol SII', deslindes: 'Deslindes' },
   );
   db.tx(() => {
     actualizar('parcelas', id, d);
@@ -65,8 +65,22 @@ rutasParcelas.put('/parcelas/:id', requiere('parcelas'), (req, res) => {
   res.json({ ok: true });
 });
 
-// Reservar o liberar una parcela es operación del día a día: la puede hacer cualquier cuenta.
-rutasParcelas.post('/parcelas/:id/estado', (req, res) => {
+// Precio de lista: el super administrador y los dueños.
+rutasParcelas.put('/parcelas/:id/precio', requiere('precios'), (req, res) => {
+  const id = idDe(req.params.id);
+  const { precio } = leer(req.body, { precio: entero({ req: true, min: 0, max: 100_000_000_000 }) });
+  const actual = db.get('SELECT numero, precio FROM parcelas WHERE id = ?', id);
+  if (!actual) throw new ErrorApp('La parcela no existe', 404);
+  if (actual.precio === precio) return res.json({ ok: true, cambios: 0 });
+  db.tx(() => {
+    actualizar('parcelas', id, { precio });
+    registrar(req.usuario.id, { accion: 'parcela_editada', entidad: 'parcela', entidadId: id, detalle: `Parcela ${actual.numero}: Precio: ${pesos(actual.precio)} → ${pesos(precio)}` });
+  });
+  res.json({ ok: true, cambios: 1 });
+});
+
+// Reservar o liberar una parcela: contador y super administrador.
+rutasParcelas.post('/parcelas/:id/estado', requiere('operaciones'), (req, res) => {
   const id = idDe(req.params.id);
   const { estado } = leer(req.body, { estado: opcion(['disponible', 'reservada'], { req: true }) });
   const actual = db.get('SELECT estado FROM parcelas WHERE id = ?', id);
@@ -80,9 +94,10 @@ rutasParcelas.post('/parcelas/:id/estado', (req, res) => {
 
 // ---------- Cambios en bloque (precios de lista y sectores) ----------
 
-const nombreAccion = { precio: 'Precio de lista', precio_m2: 'Precio por m²', sector: 'Sector' };
+const nombreAccion = { precio: 'Precio de lista', precio_m2: 'Precio por m²', sector: 'Manzana' };
 
-rutasParcelas.post('/parcelas/masivo', requiere('parcelas'), (req, res) => {
+// Precios en bloque: super administrador y contador. Manzana y códigos: solo el super administrador.
+rutasParcelas.post('/parcelas/masivo', (req, res) => {
   const ids = req.body?.ids;
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 5000 || !ids.every((x) => Number.isInteger(x) && x > 0)) {
     throw new ErrorApp('Indique las parcelas a modificar');
@@ -93,6 +108,7 @@ rutasParcelas.post('/parcelas/masivo', requiere('parcelas'), (req, res) => {
     sector: texto({ max: 80 }),
     prefijo: texto({ max: 10 }),
   });
+  exigir(req.usuario, d.accion === 'sector' ? 'parcelas' : 'precios');
   const parcelas = db.all(`SELECT * FROM parcelas WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
   if (parcelas.length !== new Set(ids).size) throw new ErrorApp('Alguna de las parcelas ya no existe', 404);
 
@@ -108,7 +124,7 @@ rutasParcelas.post('/parcelas/masivo', requiere('parcelas'), (req, res) => {
       if (precio !== p.precio) cambios.push({ p, valores: { precio }, texto: `${p.numero}: ${pesos(p.precio)} → ${pesos(precio)}` });
     }
   } else {
-    if (!d.sector) throw new ErrorApp('Indique el nombre del sector');
+    if (!d.sector) throw new ErrorApp('Indique el nombre de la manzana');
     const prefijo = d.prefijo.replace(/-+$/, '');
     if (prefijo && !/^[\p{L}\p{N}]+$/u.test(prefijo)) throw new ErrorApp('El prefijo solo puede tener letras y números');
     for (const p of parcelas) {

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { db, actualizar } from '../db.js';
 import {
-  abrirSesion, cerrarSesion, cerrarOtrasSesiones, autenticar, requiere, puede, PERMISOS, PERFILES,
+  abrirSesion, cerrarSesion, cerrarOtrasSesiones, autenticar, requiere, puede, PERMISOS, PERFILES, ROLES_DUENOS,
   hashPassword, verificarPassword, validarClave, comprobarIntentos, anotarIntento,
 } from '../auth.js';
 import { registrar } from '../lib/bitacora.js';
-import { ErrorApp, leer, texto, idDe } from '../lib/validar.js';
+import { ErrorApp, leer, texto, idDe, rut, telefono, correo } from '../lib/validar.js';
+import { CAMPOS_PERSONALES, datosPersonalesDe, completos } from '../lib/datos-personales.js';
 
 export const rutasAuth = Router();
 
@@ -44,13 +45,44 @@ rutasAuth.post('/auth/password', autenticar, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Datos personales de los dueños (cada uno los suyos) ----------
+
+rutasAuth.get('/auth/datos-personales', autenticar, requiere('datos_personales'), (req, res) => {
+  res.json(datosPersonalesDe(db.get('SELECT datos_personales FROM usuarios WHERE id = ?', req.usuario.id)));
+});
+
+rutasAuth.put('/auth/datos-personales', autenticar, requiere('datos_personales'), (req, res) => {
+  const especiales = { rut: rut(), telefono: telefono(), email: correo() };
+  const d = leer(req.body, Object.fromEntries(Object.keys(CAMPOS_PERSONALES).map((k) => [k, especiales[k] ?? texto({ max: k === 'direccion' ? 200 : 120 })])));
+  const actual = datosPersonalesDe(db.get('SELECT datos_personales FROM usuarios WHERE id = ?', req.usuario.id));
+  const cambiados = Object.keys(CAMPOS_PERSONALES).filter((k) => d[k] !== actual[k]);
+  if (!cambiados.length) return res.json({ ok: true, cambios: 0 });
+  db.tx(() => {
+    db.run('UPDATE usuarios SET datos_personales = ? WHERE id = ?', JSON.stringify(d), req.usuario.id);
+    // En el registro solo se anota qué campos cambiaron, no los datos personales en sí.
+    registrar(req.usuario.id, {
+      accion: 'datos_personales', entidad: 'usuario', entidadId: req.usuario.id,
+      detalle: `Actualizó sus datos personales: ${cambiados.map((k) => CAMPOS_PERSONALES[k]).join(', ')}`,
+    });
+  });
+  res.json({ ok: true, cambios: cambiados.length });
+});
+
 // ---------- Cuentas (son siempre tres; aquí solo se editan) ----------
 
 rutasAuth.get('/usuarios', autenticar, (req, res) => {
-  // Todos necesitan la lista para asignar vendedores; el nombre de usuario y el perfil los ve solo el super administrador.
-  const filas = db.all('SELECT id, usuario, nombre, rol FROM usuarios WHERE activo = 1 ORDER BY id');
+  // Todos necesitan la lista para asignar vendedores; el nombre de usuario y el perfil los ve solo el super administrador,
+  // que además ve el nombre completo y el RUT de los dueños (para designar al representante legal).
+  const filas = db.all('SELECT id, usuario, nombre, rol, datos_personales FROM usuarios WHERE activo = 1 ORDER BY id');
   res.json(puede(req.usuario, 'administracion')
-    ? filas.map((u) => ({ ...u, perfil: PERFILES[u.rol] }))
+    ? filas.map(({ datos_personales, ...u }) => {
+        if (!ROLES_DUENOS.includes(u.rol)) return { ...u, perfil: PERFILES[u.rol] };
+        const d = datosPersonalesDe({ datos_personales });
+        return {
+          ...u, perfil: PERFILES[u.rol],
+          datos: { nombre_completo: d.nombre_completo, rut: d.rut, completos: completos(d), total: Object.keys(CAMPOS_PERSONALES).length },
+        };
+      })
     : filas.map(({ id, nombre }) => ({ id, nombre })));
 });
 

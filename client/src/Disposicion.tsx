@@ -5,6 +5,7 @@ import {
   Settings, Users, X,
 } from 'lucide-react';
 import { useConfig, useSesion } from './contexto';
+import { Campana } from './componentes/Campana';
 
 const SECCIONES = [
   { a: '/', etiqueta: 'Inicio', icono: LayoutDashboard },
@@ -84,16 +85,19 @@ export function Disposicion() {
     <div className="min-h-dvh lg:pl-60">
       {/* Computador: barra lateral fija */}
       <aside className="no-imprimir fixed inset-y-0 left-0 z-30 hidden w-60 flex-col bg-marca-800 lg:flex">
-        <div className="px-4 py-4"><Marca /></div>
+        <div className="flex items-center justify-between gap-2 py-4 pl-4 pr-2"><Marca /><Campana /></div>
         <Menu_ />
       </aside>
 
       {/* Celular: barra superior */}
       <header className="no-imprimir sticky top-0 z-30 flex items-center justify-between bg-marca-800 px-4 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] lg:hidden">
         <Marca />
-        <button onClick={() => setMenuAbierto(true)} aria-label="Abrir menú" className="rounded-lg p-2 text-white hover:bg-white/10">
-          <Menu className="size-6" />
-        </button>
+        <div className="flex items-center gap-1">
+          <Campana claro />
+          <button onClick={() => setMenuAbierto(true)} aria-label="Abrir menú" className="rounded-lg p-2 text-white hover:bg-white/10">
+            <Menu className="size-6" />
+          </button>
+        </div>
       </header>
 
       {/* Celular: menú completo deslizable */}

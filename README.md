@@ -46,31 +46,162 @@ Después de ingresar con la cuenta `admin`:
 
 1. **Configuración → Empresa y proyecto**: razón social, RUT, representante legal, datos bancarios, ubicación e inscripción del fundo. Estos datos alimentan el membrete, las cartas y las promesas (lo que falte sale como una línea en blanco `____` para completar a mano).
 2. **Configuración → Crédito y cobranza**: interés mensual habitual, pie, número de cuotas e interés por mora.
-3. **Parcelas → Lista de precios → Cambios en bloque**: fije los precios de lista (por m² o un monto fijo) por sector o para las parcelas filtradas. Ahí mismo se puede cambiar el nombre de un sector y el prefijo de sus códigos.
+3. **Parcelas → Lista de precios → Cambios en bloque**: fije los precios de lista (por m² o un monto fijo) por manzana o para las parcelas filtradas. Ahí mismo se puede cambiar el nombre de una manzana y el prefijo de sus códigos.
 4. **Documentos → Plantillas**: el abogado revisa y ajusta los textos (ver nota legal más abajo).
 
 ## Cuentas y permisos
 
 El sistema tiene **exactamente tres cuentas**; no se crean ni se eliminan desde la aplicación. Se ingresa con el nombre de usuario.
+`ldiaz` y `pmercado` son las cuentas de los **dueños**.
 
-| Función | `admin` · Super administrador | `ldiaz` · Abogado | `pmercado` · Contador |
+| Función | `admin` · Super administrador | `ldiaz` · Luis Díaz, abogado y dueño | `pmercado` · Patricio Mercado, contador y dueño |
 |---|:-:|:-:|:-:|
-| Funciones básicas: clientes y fichas, ventas, registrar pagos, cotizaciones, visitas, confeccionar cartas y promesas, reservar parcelas | ✓ | ✓ | ✓ |
-| Datos sensibles de la empresa: RUT, representante legal, datos bancarios, inscripción del fundo | ✓ | | |
-| Parcelas: crear, cambiar precios (también en bloque), editar el mapa, cargar el plano | ✓ | | |
-| Cuentas: nombres y restablecer contraseñas · Registro de cambios · eliminar clientes | ✓ | | |
+| Ver toda la información: parcelas, clientes y deudores, ventas, cuotas, cobranza, flujo de ingresos, pagos | ✓ | ✓ | ✓ |
+| Clientes (ficha completa) y gestiones de cobranza, ventas, registrar pagos, reservar parcelas | ✓ | | ✓ |
+| Cotizaciones | ✓ | ✓ | ✓ |
+| Informar al contador una venta cerrada (para que él la registre) | | ✓ | |
+| Completar los datos esenciales de un cliente (identificación y domicilio) | ✓ | ✓ | ✓ |
+| Agendar visitas | ✓ | ✓ a su nombre (modifica solo las que agendó) | ✓ |
+| Confeccionar cartas y promesas · enviar cartas de cobranza por correo o WhatsApp | ✓ | ✓ | ✓ |
 | Modificar las plantillas de documentos legales | ✓ | ✓ | |
-| Modificar la tabla de amortización de una venta | ✓ | | ✓ |
-| Datos contables: tasas de interés y mora, corregir o anular pagos, anular ventas | ✓ | | ✓ |
+| Precios de lista de las parcelas (de a una o en bloque) | ✓ | | ✓ |
+| Tabla de amortización · datos contables (tasas, corregir o anular pagos, anular ventas) · envío programado de cartas | ✓ | | ✓ |
+| Datos sensibles de la empresa · correo para enviar cartas | ✓ | | |
+| Parcelas: crear, manzanas y códigos, editar el mapa, cargar el plano | ✓ | | |
+| Cuentas: nombres y restablecer contraseñas · eliminar clientes | ✓ | | |
+| Registro de cambios | todos los cambios | los de los dueños | los de los dueños |
+| Datos personales para los documentos legales (cada uno los suyos) | | ✓ | ✓ |
+| Avisos de visitas en la campana | | ✓ | ✓ |
+
+El abogado **no registra nada que tenga que ver con dinero**: ve las ventas, deudas, deudores e ingresos, pero los botones para
+registrar ventas o pagos, reservar o cambiar precios no aparecen en su cuenta (y el servidor los rechaza igual). Sí cotiza, y
+cuando cierra una venta la informa al contador (ver abajo). Cuando un documento necesita datos del cliente que faltan (RUT,
+estado civil, profesión, domicilio…), el sistema lo avisa y él mismo puede completarlos, sin acceso a la renta ni a los
+antecedentes comerciales.
+
+### Ventas que cierra el abogado
+
+1. El abogado cotiza la parcela y, cuando el cliente acepta, en la cotización elige **Informar venta al contador** (con notas
+   opcionales). La parcela queda reservada, si así lo indica.
+2. El contador recibe el aviso en la campana y la venta aparece en **Ventas → Ventas informadas por registrar**. *Registrar
+   venta* abre el formulario con todos los datos de la cotización; él revisa el comprador y la forma de pago y la registra.
+3. Al registrarla, el abogado recibe el aviso. Si el contador la descarta (por ejemplo, el cliente desistió), indica el motivo,
+   se libera la reserva y el abogado también se entera. Mientras espera, la cotización no se puede modificar.
 
 Cada persona cambia su propia contraseña en **Configuración → Mi cuenta**.
+
+### Datos personales de los dueños en los documentos
+
+En **Configuración → Mi cuenta → Mis datos personales**, `ldiaz` y `pmercado` completan su nombre completo, RUT, nacionalidad,
+estado civil, profesión, cargo, domicilio, teléfono y correo (con confirmación "antes → después"; en el registro de cambios queda
+qué campos cambiaron, no los datos). Con eso los documentos se completan solos:
+
+- **Representante legal**: en *Configuración → Empresa y proyecto* el super administrador elige si el representante es uno de los dueños.
+  Si lo es, la comparecencia y la firma de la promesa toman sus datos (`{{representante.nombre}}`, `{{representante.rut}}`,
+  `{{representante.nacionalidad}}`, `{{representante.estado_civil}}`, `{{representante.profesion}}`…) y se actualizan solas cuando él
+  corrige los suyos. Si es otra persona, se escriben a mano el nombre y el RUT, como antes.
+- **Variables de cada dueño** para usar en cualquier plantilla (*Insertar dato*): `{{abogado.nombre}}`, `{{abogado.rut}}`… (de `ldiaz`) y
+  `{{contador.nombre}}`, `{{contador.rut}}`… (de `pmercado`). Un dato sin completar sale como línea en blanco `____`.
 
 ### Protección contra errores
 
 - **Confirmación con "antes → después"**: todo cambio sensible (datos de la empresa, tasas, precios de parcelas, contraseñas, corrección de pagos, plantillas, tabla de amortización) muestra exactamente qué cambia y pide confirmar antes de guardar.
 - **Motivo obligatorio** al modificar la tabla de amortización, corregir o anular un pago y anular una venta.
 - **Deshacer**: cada cambio a una tabla de amortización queda en **Historial de cambios** de la venta con un botón *Deshacer este cambio*; cada versión de una plantilla queda en *Versiones anteriores*. Deshacer también se puede deshacer.
-- **Registro de cambios** (Configuración, solo super administrador): quién cambió qué, cuándo y por qué. Se puede descargar a Excel.
+- **Registro de cambios** (Configuración): quién cambió qué, cuándo y por qué. El super administrador ve todo; los dueños, los cambios hechos por `ldiaz` y `pmercado`. Se filtra por persona y tipo, y se descarga a Excel.
+
+### Formato de los datos
+
+Cada campo acepta solo lo que corresponde y lo ordena al salir de él. Si algo no calza, se marca en rojo con el motivo y no se
+guarda (el servidor vuelve a revisarlo, así que tampoco entra un dato mal escrito por otra vía).
+
+| Campo | Qué acepta | Cómo queda |
+|---|---|---|
+| RUT (cliente, aval, interesado, empresa, representante, dueños) | Números, puntos, guion y K; se revisa el dígito verificador | `12.345.678-5` |
+| Celular (cliente, interesado, visita) | Solo números (y `+` al comienzo); 9 dígitos que empiezan con 9, con o sin +56 | `+56 9 1234 5678` |
+| Teléfono (aval, empresa, dueños) | Celular o fijo: Santiago `2 2345 6789`, regiones `45 234 5678`; extranjero con `+` y código de país | `+56 2 2345 6789` |
+| Correo electrónico | `nombre@dominio.cl` | en minúsculas |
+| Fecha de nacimiento | No puede ser posterior a hoy | — |
+| N° de cuotas, días, cuotas pagadas | Solo números enteros | — |
+| Interés, pie, superficie | Números con coma decimal | `1,25` |
+| Montos | Solo números; se muestran con puntos de miles | `$24.700.000` |
+| Rol de avalúo (SII) | Números con guion | `1234-56` |
+
+Los datos que ya estaban guardados con otro formato se siguen mostrando; al editarlos por primera vez habrá que dejarlos en el
+formato correcto.
+
+### Cuotas por monto
+
+Al cotizar o vender, en **Calcular por** se elige *N° de cuotas* (se calcula el valor de la cuota) o *Monto de la cuota*: se indica
+un monto cerrado, como $500.000 (solo múltiplos de $1.000; al salir del campo se redondea), y el sistema calcula cuántas cuotas
+hacen falta. Todas las cuotas son de ese monto y la última es menor, por el saldo que queda. Si la cuota no alcanza a cubrir el
+interés del mes o el crédito pasaría de 360 cuotas, lo avisa.
+
+### Visitas y avisos
+
+Cada visita dice **quién la agendó** (por ejemplo, "Luis Díaz (Abogado)") y quién la atiende. Los dueños reciben avisos en la
+**campana** (arriba): cuando el otro agenda, reprograma, cancela o elimina una visita, y un recordatorio de las visitas de las
+próximas 24 horas y otro **una hora antes**. Además, el contador recibe las ventas que informa el abogado y el resumen del envío
+programado de cartas, y el abogado se entera cuando su venta quedó registrada o fue rechazada. Tocar un aviso abre lo que
+corresponde (el día de la visita, la venta…).
+
+#### Avisos en el celular y el computador aunque el sistema esté cerrado
+
+Cada dueño los activa **una vez en cada equipo** donde quiera recibirlos (celular, computador de la oficina, notebook):
+
+1. Entrar con su cuenta y tocar la **campana** → *Activar avisos en este equipo* (o en **Configuración → Mi cuenta → Avisos en este equipo**).
+2. Aceptar cuando el navegador pregunte si permite notificaciones.
+3. Con *Enviar aviso de prueba* se comprueba que llegan.
+
+Desde ese momento los avisos llegan como notificación del teléfono o del computador **aunque la app esté cerrada**. En Mi cuenta se
+ve la lista de equipos activados y se puede desactivar cualquiera. Al cerrar sesión en un equipo, ese equipo deja de recibirlos.
+
+Requisitos:
+
+- **El sistema debe estar publicado con HTTPS** (ver [Publicarlo en internet](#publicarlo-en-internet)). Es una exigencia de los
+  navegadores: sin HTTPS solo funciona en el mismo computador donde corre el sistema (`http://localhost:3000`); desde el celular por
+  la red local (`http://192.168.…`) la opción aparece como no disponible y explica el motivo.
+- **Android**: Chrome, Edge o Firefox. Conviene instalarlo como app (ver abajo), pero no es obligatorio.
+- **iPhone/iPad**: iOS 16.4 o más nuevo, y **primero hay que agregar el sistema a la pantalla de inicio** (Safari → Compartir →
+  *Agregar a inicio*) y activar los avisos abriéndolo desde ese ícono. En Safari normal Apple no lo permite.
+- **Computador**: Chrome, Edge o Firefox. El navegador debe quedar funcionando en segundo plano (no hace falta tener el sistema
+  abierto). En Windows, revisar que las notificaciones de Chrome/Edge no estén silenciadas en *Configuración → Sistema → Notificaciones*.
+- **El servidor del sistema debe estar encendido y con internet**: es quien manda los avisos (a través del servicio de avisos de
+  Google, Mozilla o Apple, según el navegador). Si el teléfono está apagado o sin señal, el aviso le llega al volver a conectarse
+  (se guarda hasta 24 horas).
+- Si se negó el permiso por error, la campana lo indica: hay que permitir las notificaciones de este sitio en la configuración del
+  navegador (candado junto a la dirección) y volver a activar.
+
+### Envío de cartas de cobranza por correo y WhatsApp
+
+- **A mano**: en una carta emitida (Documentos), *Enviar por correo* o *Abrir en WhatsApp*. Con confirmación.
+- **Programado, solo por correo** (Configuración → Envío de cartas; lo define el contador): cada día, a la hora indicada (y si se
+  quiere solo de lunes a viernes), el sistema envía por correo a cada deudor la carta de la etapa que corresponde a los días de
+  atraso de su cuota impaga más antigua (por defecto: primer aviso a los 5 días, segundo a los 20, último a los 45). Cada etapa se
+  envía una sola vez; si el deudor se pone al día y se vuelve a atrasar, el ciclo parte de nuevo. **El sistema debe estar
+  encendido** a esa hora.
+- **Cobranza → Envío de cartas** muestra qué saldría hoy, permite *Enviar ahora* y guarda el registro de cada envío (también en la
+  ficha del deudor, y un aviso al contador con el resumen).
+- **Modo de prueba** (activo al comenzar): los correos se registran pero no salen. Se desactiva cuando el correo está probado.
+- **Correo**: el super administrador configura el servidor SMTP de la cuenta de envío (por ejemplo Gmail con una *contraseña de
+  aplicación*) y lo prueba con *Probar correo*. La contraseña no se vuelve a mostrar.
+
+#### WhatsApp (a mano, sin costo)
+
+WhatsApp no se configura en el sistema y no usa la API pagada de Meta: **cada carta se envía desde el WhatsApp de quien la manda**.
+
+1. En la carta emitida, *Abrir en WhatsApp* abre la conversación con el celular del cliente y el texto de la carta ya escrito.
+2. La persona revisa el mensaje y lo envía. Queda anotado en la ficha del deudor.
+
+Para que funcione:
+
+- En el **computador**: tener abierta la sesión de **WhatsApp Web** (web.whatsapp.com) o la aplicación de escritorio de WhatsApp,
+  vinculada al celular (en el celular: WhatsApp → Dispositivos vinculados → Vincular un dispositivo, y escanear el código).
+- En el **celular**: tener WhatsApp instalado; el enlace abre la aplicación directamente.
+- El cliente debe tener su **celular en la ficha** (por ejemplo `+56 9 1234 5678`; se acepta también sin `+56`).
+
+El mensaje sale desde la cuenta abierta en ese equipo: conviene usar un número de la empresa (la aplicación gratuita
+*WhatsApp Business* sirve) y no el personal. Como no hay API, **no hay envíos programados por WhatsApp**: esos salen por correo.
 
 ### Editor de la tabla de amortización
 
@@ -88,9 +219,10 @@ Desde una venta, **Editar tabla** (contador o super administrador):
 Los planos que entregó el cliente están en `planos/` (AutoCAD `.dwg` y Google Earth `.kmz`). Se convirtieron a
 `server/datos/loteo.json`, que el sistema carga como parcelas y como fondo del mapa:
 
-- **185 lotes en 9 sectores**, cada uno con su numeración desde 1: A (12), B (28), C (9), D (16), E (18), F (4), G (9), H (4) e I (85).
-  El código de cada parcela es *sector-número* (por ejemplo `B-12`). **Los nombres de los sectores son provisorios** (A a I, de
-  poniente a oriente): si en la empresa se usan otros, cámbielos en *Cambios en bloque → Sector y código*.
+- **185 lotes en 9 manzanas**, cada una con su numeración desde 1: A (12), B (28), C (9), D (16), E (18), F (4), G (9), H (4) e I (85).
+  El código de cada parcela es *manzana-número* (por ejemplo `B-12`): el número es el del plano y la letra (A a I, de poniente a
+  oriente) es la manzana, porque el plano no les da nombre. Si se quisiera otro nombre, el super administrador lo
+  cambia en *Cambios en bloque → Manzana y código*.
 - **Superficie**: la anotada por el topógrafo en el plano. En los lotes I-52, I-54, I-75, I-77 e I-84 el contorno dibujado difiere
   más de un 3 % de lo anotado; se usa lo anotado.
 - **Deslindes**: se generaron desde el dibujo (orientación, largo según las cotas del plano y colindante: otro lote, camino interior,
@@ -110,7 +242,7 @@ node herramientas/plano/convertir.mjs "planos/nuevo.dwg" "planos/nuevo.kmz"
 ```
 
 El conversor reconstruye cada lote a partir de las líneas del dibujo (cierra las uniones que quedaron abiertas), lee el número
-y la superficie de cada lote, separa los sectores por su numeración y avisa lo que conviene revisar.
+y la superficie de cada lote, separa las manzanas por su numeración y avisa lo que conviene revisar.
 
 ### Cargar las ventas que ya existen
 
@@ -123,7 +255,8 @@ Abra la dirección del sistema en Chrome (Android) o Safari (iPhone) y elija **"
 Queda con su ícono y se abre a pantalla completa. Es la misma aplicación y los mismos datos que en el computador.
 
 La instalación como app requiere que el sistema esté publicado con **HTTPS**. Dentro de la red local (por ejemplo
-`http://192.168.1.20:3000`) funciona igual desde el navegador del celular, pero sin la opción de instalar.
+`http://192.168.1.20:3000`) funciona igual desde el navegador del celular, pero sin la opción de instalar ni los avisos con la app
+cerrada (ver [Avisos en el celular y el computador](#avisos-en-el-celular-y-el-computador-aunque-el-sistema-esté-cerrado)).
 
 ## Publicarlo en internet
 
@@ -141,7 +274,7 @@ PORT=3000 DATA_DIR=/var/lib/aguafresca COOKIE_SECURE=true TRUST_PROXY=1 npm star
 | `CLAVE_ADMIN`, `CLAVE_LDIAZ`, `CLAVE_PMERCADO` | Contraseñas iniciales de las tres cuentas (solo el primer arranque) | al azar, se muestran en la consola |
 | `COOKIE_SECURE` | `true` cuando se publica con HTTPS | — |
 | `TRUST_PROXY` | `1` cuando hay un proxy (Caddy/Nginx) delante | — |
-| `TZ_APP` | Zona horaria para "hoy" y los atrasos | `America/Santiago` |
+| `TZ_APP` | Zona horaria para "hoy", los atrasos y la hora del envío programado | `America/Santiago` |
 
 ## Respaldo
 
@@ -170,7 +303,7 @@ que las tasas de interés y de mora no superen el interés máximo convencional 
 - Montos en **pesos chilenos**. No maneja UF.
 - Un pago mayor a la cuota se imputa a las cuotas siguientes; para un **prepago a capital** el contador ajusta la tabla con el editor (p. ej. *Recalcular desde una cuota*).
 - Una venta tiene **un comprador**; un segundo comprador se agrega a mano en el texto del contrato.
-- No envía correos ni mensajes automáticamente: las cartas se imprimen o exportan, y WhatsApp se abre con el texto listo para enviar.
+- WhatsApp se envía a mano (sin la API pagada de Meta); los envíos programados de cartas salen solo por correo.
 - La "app" es la aplicación web instalable; no está publicada en Google Play ni App Store.
 
 ## Desarrollo
@@ -193,6 +326,10 @@ server/            API (Node + Express) y base de datos SQLite
   lib/loteo.js     carga del plano del topógrafo (parcelas y fondo del mapa)
   importar-loteo.js  carga el plano desde la consola (lo usa iniciar.sh)
   datos/loteo.json plano del loteo convertido
+  lib/datos-personales.js  datos de los dueños y representante legal para los documentos
+  lib/avisos.js    avisos de la campana (visitas)
+  lib/canales.js   correo de envío (SMTP)
+  lib/envios.js    envío de cartas a mano y programado
   rutas/           un archivo por módulo
   test/            pruebas automáticas
 client/            aplicación web (React + TypeScript + Tailwind)

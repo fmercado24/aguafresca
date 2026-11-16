@@ -4,9 +4,11 @@ import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, MapPin, MessageC
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
 import { coordenadas, enlaceGoogleMaps } from '../componentes/MapaParcelas';
-import { diaSemana, fechaConDia, hora, mesLargo, plural, sumarDias, sumarMeses } from '../formato';
+import { correoValido, diaSemana, errorTelefono, fechaConDia, hora, mesLargo, plural, sumarDias, sumarMeses } from '../formato';
 import type { ClienteResumen, Cuenta, EstadoVisita, Parcela, Visita } from '../tipos';
-import { AreaTexto, Boton, Campo, Encabezado, Entrada, ESTADOS_VISITA, InsigniaVisita, Modal, Selector, Tarjeta, Vacio } from '../ui';
+import {
+  AreaTexto, Boton, Campo, Encabezado, Entrada, ESTADOS_VISITA, InsigniaVisita, Modal, Selector, Tarjeta, Vacio, EntradaTelefono,
+} from '../ui';
 
 const DIAS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
 const ESTADOS = Object.keys(ESTADOS_VISITA) as EstadoVisita[];
@@ -33,6 +35,8 @@ interface Borrador {
   vendedor_id: number | null;
   estado: EstadoVisita;
   notas: string;
+  creado_por: number | null;
+  agendada_por: string | null;
 }
 
 function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador; alCerrar: () => void; alGuardar: (fecha: string) => void }) {
@@ -41,6 +45,10 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
   const parcelas = useDatos<Parcela[]>('/parcelas');
   const clientes = useDatos<ClienteResumen[]>('/clientes');
   const usuarios = useDatos<Cuenta[]>('/usuarios');
+  const { usuario, puede } = useSesion();
+  // El contador y el super administrador modifican cualquier visita; el abogado, solo las que agendó (y a su nombre).
+  const todas = puede('visitas_todas');
+  const soloLectura = !!inicial.id && !todas && inicial.creado_por !== usuario?.id;
   const [b, setB] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
   const cambiar = <K extends keyof Borrador>(k: K, v: Borrador[K]) => setB((x) => ({ ...x, [k]: v }));
@@ -49,9 +57,12 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
 
   async function guardar(e: FormEvent) {
     e.preventDefault();
+    const errTel = errorTelefono(b.telefono, true);
+    if (errTel) return avisos.error(errTel);
+    if (!correoValido(b.email)) return avisos.error('Revise el correo electrónico (ej.: nombre@dominio.cl)');
     setGuardando(true);
     try {
-      const { id, fecha, hora: h, ...resto } = b;
+      const { id, fecha, hora: h, creado_por: _c, agendada_por: _a, ...resto } = b;
       const cuerpo = { ...resto, inicio: `${fecha}T${h}` };
       if (id) await api.put(`/visitas/${id}`, cuerpo);
       else await api.post('/visitas', cuerpo);
@@ -77,16 +88,23 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
     <Modal
       abierto
       alCerrar={alCerrar}
-      titulo={b.id ? 'Editar visita' : 'Agendar visita'}
-      pie={
+      titulo={soloLectura ? 'Visita' : b.id ? 'Editar visita' : 'Agendar visita'}
+      pie={soloLectura ? <Boton variante="secundario" onClick={alCerrar}>Cerrar</Boton> : (
         <>
           {b.id && <Boton variante="fantasma" icono={Trash2} onClick={eliminar} className="mr-auto text-red-700">Eliminar</Boton>}
           <Boton variante="secundario" onClick={alCerrar}>Cancelar</Boton>
           <Boton type="submit" form={idForm} cargando={guardando}>Guardar</Boton>
         </>
-      }
+      )}
     >
-      <form id={idForm} onSubmit={guardar} className="grid grid-cols-6 gap-3">
+      {b.agendada_por && (
+        <p className="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
+          Agendada por <strong>{b.agendada_por}</strong>.
+          {soloLectura && ' Solo quien la agendó, el contador o el super administrador pueden modificarla.'}
+        </p>
+      )}
+      <form id={idForm} onSubmit={guardar}>
+      <fieldset disabled={soloLectura} className="grid min-w-0 grid-cols-6 gap-3">
         <Campo etiqueta="Fecha" className="col-span-3 sm:col-span-2">
           <Entrada type="date" required value={b.fecha} onChange={(e) => cambiar('fecha', e.target.value)} />
         </Campo>
@@ -116,11 +134,11 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
         <Campo etiqueta="Nombre del visitante" className="col-span-6">
           <Entrada required maxLength={160} value={b.nombre} onChange={(e) => cambiar('nombre', e.target.value)} />
         </Campo>
-        <Campo etiqueta="Teléfono" className="col-span-3">
-          <Entrada type="tel" maxLength={40} value={b.telefono} onChange={(e) => cambiar('telefono', e.target.value)} placeholder="+56 9 …" />
+        <Campo etiqueta="Celular" className="col-span-3">
+          <EntradaTelefono movil valor={b.telefono} alCambiar={(v) => cambiar('telefono', v)} />
         </Campo>
         <Campo etiqueta="Correo electrónico" className="col-span-3">
-          <Entrada type="email" maxLength={160} value={b.email} onChange={(e) => cambiar('email', e.target.value)} />
+          <Entrada type="email" maxLength={160} placeholder="nombre@dominio.cl" value={b.email} onChange={(e) => cambiar('email', e.target.value)} />
         </Campo>
 
         <div className="col-span-6">
@@ -142,11 +160,15 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
           </div>
         </div>
 
-        <Campo etiqueta="Vendedor a cargo" className="col-span-3">
-          <Selector value={b.vendedor_id ?? ''} onChange={(e) => cambiar('vendedor_id', e.target.value ? Number(e.target.value) : null)}>
-            <option value="">Sin asignar</option>
-            {(usuarios.datos ?? []).map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </Selector>
+        <Campo etiqueta="Atiende" className="col-span-3" ayuda={!todas && !soloLectura ? 'Las visitas que usted agenda quedan a su nombre.' : undefined}>
+          {todas ? (
+            <Selector value={b.vendedor_id ?? ''} onChange={(e) => cambiar('vendedor_id', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">Sin asignar</option>
+              {(usuarios.datos ?? []).map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </Selector>
+          ) : (
+            <Entrada disabled value={(soloLectura ? usuarios.datos?.find((u) => u.id === b.vendedor_id)?.nombre : usuario?.nombre) ?? '—'} />
+          )}
         </Campo>
         <Campo etiqueta="Estado" className="col-span-3">
           <Selector value={b.estado} onChange={(e) => cambiar('estado', e.target.value as EstadoVisita)}>
@@ -156,6 +178,7 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
         <Campo etiqueta="Notas" className="col-span-6">
           <AreaTexto rows={2} maxLength={3000} value={b.notas} onChange={(e) => cambiar('notas', e.target.value)} placeholder="Punto de encuentro, qué busca, resultado de la visita…" />
         </Campo>
+      </fieldset>
       </form>
     </Modal>
   );
@@ -197,11 +220,16 @@ export function Visitas() {
   const nueva = (fecha: string, parcelaId?: number): Borrador => ({
     id: null, fecha, hora: '11:00', duracion_min: 60, nombre: '', telefono: '', email: '', cliente_id: null,
     parcela_ids: parcelaId ? [parcelaId] : [], vendedor_id: usuario?.id ?? null, estado: 'programada', notas: '',
+    creado_por: null, agendada_por: null,
   });
 
-  // Llegada desde el mapa de parcelas: …/visitas?nueva=1&parcela=ID
+  // Llegada desde el mapa de parcelas (…/visitas?nueva=1&parcela=ID) o desde un aviso (…/visitas?dia=AAAA-MM-DD).
   useEffect(() => {
-    if (params.get('nueva')) {
+    const diaAviso = params.get('dia');
+    if (diaAviso && /^\d{4}-\d{2}-\d{2}$/.test(diaAviso)) {
+      irA(diaAviso);
+      setParams({}, { replace: true });
+    } else if (params.get('nueva')) {
       setEditando(nueva(hoy, Number(params.get('parcela')) || undefined));
       setParams({}, { replace: true });
     }
@@ -292,6 +320,7 @@ export function Visitas() {
                       onClick={() => setEditando({
                         id: v.id, fecha: v.inicio.slice(0, 10), hora: hora(v.inicio), duracion_min: v.duracion_min, nombre: v.nombre, telefono: v.telefono,
                         email: v.email, cliente_id: v.cliente_id, parcela_ids: v.parcela_ids, vendedor_id: v.vendedor_id, estado: v.estado, notas: v.notas,
+                        creado_por: v.creado_por, agendada_por: v.agendada_por,
                       })}
                       className="block w-full text-left"
                     >
@@ -305,6 +334,7 @@ export function Visitas() {
                       <div className="mt-1 text-xs text-stone-600">
                         {v.parcelas.length > 0 && <div>Parcelas de interés: {v.parcelas.join(', ')}</div>}
                         {v.vendedor && <div>Atiende: {v.vendedor}</div>}
+                        {v.agendada_por && <div>Agendada por: {v.agendada_por}</div>}
                         {v.notas && <div className="mt-1 whitespace-pre-line text-stone-700">{v.notas}</div>}
                       </div>
                     </button>
