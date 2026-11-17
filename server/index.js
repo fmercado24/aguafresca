@@ -15,16 +15,18 @@ function noPudoIniciar(e) {
 }
 
 // En Express 5 esta función se llama también si el servidor no logra iniciar (con el error como argumento).
-app.listen(config.puerto, (error) => {
+const direccion = config.host ? [config.puerto, config.host] : [config.puerto];
+app.listen(...direccion, (error) => {
   if (error) return noPudoIniciar(error);
   console.log('Agua Fresca · Fundo Entre Ríos — sistema de gestión');
   console.log(`  En este computador:  http://localhost:${config.puerto}`);
-  for (const red of Object.values(os.networkInterfaces()).flat()) {
+  const enTodas = !config.host || config.host === '0.0.0.0' || config.host === '::';
+  for (const red of enTodas ? Object.values(os.networkInterfaces()).flat() : []) {
     if (red && red.family === 'IPv4' && !red.internal) {
       console.log(`  En la red local:     http://${red.address}:${config.puerto}`);
     }
   }
-  console.log('  Para detenerlo: Ctrl + C');
+  if (process.stdout.isTTY) console.log('  Para detenerlo: Ctrl + C');
 
   // Envío programado de cartas de cobranza: se revisa cada 5 minutos si ya es la hora configurada.
   const revisar = () => revisarProgramacion()

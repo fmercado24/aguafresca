@@ -6,6 +6,9 @@ const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const config = {
   raiz,
   puerto: Number(process.env.PORT) || 3000,
+  // Dirección donde escucha el servidor. En el servidor con túnel de Cloudflare es 127.0.0.1: así solo se
+  // llega al sistema por el túnel (con HTTPS) y no directamente por la red. Vacío = todas las interfaces.
+  host: process.env.LISTEN_HOST || '',
   // Carpeta donde viven la base de datos y el plano del loteo. Es lo que hay que respaldar.
   dirDatos: path.resolve(process.env.DATA_DIR || path.join(raiz, 'data')),
   rutaBD: process.env.DB_PATH || '',

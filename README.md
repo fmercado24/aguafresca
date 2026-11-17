@@ -38,9 +38,12 @@ del plano del topógrafo** (ver *Plano del loteo* más abajo), con precio por de
 | `--demo` | En el primer inicio carga los lotes del plano con precios ficticios, 10 clientes ficticios y ventas en distintas situaciones de pago |
 | `--puerto 8080` | Usa otro puerto (por ejemplo, si el 3000 está ocupado) |
 | `--clave ldiaz` | Restablece la contraseña de una cuenta (`admin`, `ldiaz` o `pmercado`), por ejemplo si se olvidó |
+| `--preparar` | Deja todo listo (dependencias, compilación y, la primera vez, las cuentas) y termina sin iniciar; lo usa `iniciar-server.sh` |
 | `--ayuda` | Muestra estas opciones |
 
-Para volver a empezar en limpio, detenga el sistema y borre (o mueva) la carpeta `data/`.
+**La base en uso (`data/aguafresca.db`) es la definitiva**, cargada desde el Excel del contador (ver *Datos cargados desde el
+Excel del contador* más abajo): **no la borre**. Para probar con datos ficticios use otra carpeta, por ejemplo
+`DATA_DIR=/tmp/prueba ./iniciar.sh --demo`.
 
 Después de ingresar con la cuenta `admin`:
 
@@ -219,10 +222,13 @@ Desde una venta, **Editar tabla** (contador o super administrador):
 Los planos que entregó el cliente están en `planos/` (AutoCAD `.dwg` y Google Earth `.kmz`). Se convirtieron a
 `server/datos/loteo.json`, que el sistema carga como parcelas y como fondo del mapa:
 
-- **185 lotes en 9 manzanas**, cada una con su numeración desde 1: A (12), B (28), C (9), D (16), E (18), F (4), G (9), H (4) e I (85).
-  El código de cada parcela es *manzana-número* (por ejemplo `B-12`): el número es el del plano y la letra (A a I, de poniente a
-  oriente) es la manzana, porque el plano no les da nombre. Si se quisiera otro nombre, el super administrador lo
-  cambia en *Cambios en bloque → Manzana y código*.
+- **185 lotes en 9 manzanas**, cada una con su numeración desde 1: A (28), B (12), C (16), D (4), E (9), F (4), G (18), H (9) e I (85).
+  El código de cada parcela es *manzana-número* (por ejemplo `B-12`): el número es el del plano y la letra es la que usan los
+  dueños y el contador (el plano no trae letras; se confirmaron con ellos y están en `LETRAS_DUENOS` del conversor):
+  A = los 28 lotes del sur, junto al camino público; B = la franja de 12 del extremo poniente; C = 16; H = 9 al norte, entre la C
+  y la G; G = 18 al norte; D = 4 pegados a la G; F = los 4 siguientes hacia el oriente; E = 9 al sur-oriente, junto a la A;
+  I = los 85 del oriente, hacia el Río Colorado. Si se quisiera otro nombre, el super administrador lo cambia en
+  *Cambios en bloque → Manzana y código*.
 - **Superficie**: la anotada por el topógrafo en el plano. En los lotes I-52, I-54, I-75, I-77 e I-84 el contorno dibujado difiere
   más de un 3 % de lo anotado; se usa lo anotado.
 - **Deslindes**: se generaron desde el dibujo (orientación, largo según las cotas del plano y colindante: otro lote, camino interior,
@@ -244,6 +250,21 @@ node herramientas/plano/convertir.mjs "planos/nuevo.dwg" "planos/nuevo.kmz"
 El conversor reconstruye cada lote a partir de las líneas del dibujo (cierra las uniones que quedaron abiertas), lee el número
 y la superficie de cada lote, separa las manzanas por su numeración y avisa lo que conviene revisar.
 
+### Datos cargados desde el Excel del contador
+
+La base definitiva se armó el 17-11-2026 desde **"VENTAS DE PARCELAS FUNDO ENTRE RIOS.xlsx"** (en `data/`): 89 ventas
+(29 al contado y 60 a crédito), 87 clientes y la reserva de la B-1 (César Peralta). Cada venta a crédito tiene la tabla de cuotas
+de la hoja de su parcela tal como la lleva el contador, y las cuotas marcadas PAGADO quedaron como pagos en su fecha. Los gastos,
+retiros y arriendos del libro de caja no se cargaron (el sistema lleva ventas y cobranza, no contabilidad general).
+
+Todo lo que se decidió en cada caso, y lo que falta revisar con el contador (compradores sin nombre, ventas que solo están en el
+libro de caja, deudas antiguas), está en **`data/importacion/informe-carga.md`**. Ahí mismo están los programas que hicieron la
+carga (`extraer.py` y `cargar.mjs`); viven en `data/` porque contienen datos personales y esa carpeta no se sube a GitHub. La
+base de prueba anterior quedó en `data/respaldo-base-de-prueba-2026-11-17/`.
+
+Desde ahora las correcciones se hacen **en el sistema** (ficha del cliente, *Editar tabla* de la venta, corregir pagos), no
+volviendo a cargar el Excel: una nueva carga borraría lo registrado después.
+
 ### Cargar las ventas que ya existen
 
 Al registrar una venta marque **"Es una venta anterior…"** e indique cuántas cuotas ya están pagadas: el sistema
@@ -260,16 +281,59 @@ cerrada (ver [Avisos en el celular y el computador](#avisos-en-el-celular-y-el-c
 
 ## Publicarlo en internet
 
-Para usarlo desde cualquier lugar hay que alojarlo en un servidor (un VPS pequeño basta) detrás de HTTPS, por ejemplo con Caddy o Nginx como proxy:
+Para usarlo desde cualquier lugar, el sistema se instala en un servidor con **Ubuntu Server** (un computador de la
+oficina o un VPS pequeño, con 1 GB de memoria o más). Se publica con un **túnel de Cloudflare**, que da HTTPS sin abrir
+puertos en el router ni en el firewall. El script `iniciar-server.sh` hace todo:
 
 ```bash
-npm install && npm run build
+git clone https://github.com/fmercado24/aguafresca.git
+cd aguafresca
+./iniciar-server.sh
+```
+
+Ejecútelo con el usuario normal del servidor, **sin sudo**: el script pide la contraseña cuando la necesita.
+
+**La primera vez**, el script:
+
+1. Pregunta si tiene un **dominio propio** agregado a Cloudflare (el plan gratuito basta):
+   - **Con dominio:** pide la dirección (por ejemplo `gestion.aguafresca.cl`) y muestra un enlace. Ese enlace se abre
+     en cualquier navegador para autorizar el servidor en la cuenta de Cloudflare. El túnel y la dirección se crean solos.
+   - **Sin dominio:** usa una dirección temporal gratuita (`https://….trycloudflare.com`) que **cambia cada vez que se
+     reinicia el servidor**. La app instalada en los celulares y los avisos quedan ligados a la dirección, así que solo
+     conviene para empezar. El dominio se agrega después con `./iniciar-server.sh --dominio`.
+2. Instala Node.js y cloudflared, y compila la aplicación.
+3. Pide la base de datos. Hay que copiar la definitiva desde el computador donde se cargó el Excel: el script muestra
+   el comando `scp` exacto. Antes de copiarla, cierre el sistema en ese computador. También se puede empezar con una
+   base nueva (solo los lotes del plano). **Desde ese momento los datos se ingresan solo en el servidor.**
+4. Deja el sistema y el túnel como **servicios**: arrancan solos al encender el servidor y se reinician solos si fallan.
+   El sistema queda escuchando solo dentro del servidor (`127.0.0.1`), así que desde fuera se llega únicamente por el túnel.
+
+**Las veces siguientes**, el mismo `./iniciar-server.sh` **actualiza** el sistema. Descarga lo nuevo desde GitHub
+(`git pull`), instala dependencias si cambiaron y compila. Luego detiene el sistema unos segundos, respalda la base en
+`data/respaldos/` (se guardan los últimos 15) y lo inicia con la versión nueva. Si algo falla (no compila o no arranca),
+**vuelve solo a la versión anterior** y deja la base como estaba.
+
+| Opción | Qué hace |
+|---|---|
+| *(ninguna)* | La primera vez instala y publica el sistema; después lo actualiza desde GitHub |
+| `--estado` | Muestra si el sistema y el túnel están funcionando, y la dirección (útil con la dirección temporal) |
+| `--dominio` | Agrega un dominio propio o lo cambia |
+
+La configuración queda en `/etc/aguafresca/`, y los datos en la carpeta `data/` del proyecto, igual que en el
+computador. Para restablecer una contraseña en el servidor se usa el mismo `./iniciar.sh --clave ldiaz`. Para ver los
+mensajes del sistema: `sudo journalctl -u aguafresca -n 50`.
+
+Para usar otro servidor web (Caddy, Nginx) en vez del túnel, se configura con estas variables:
+
+```bash
+npm ci && npm run build
 PORT=3000 DATA_DIR=/var/lib/aguafresca COOKIE_SECURE=true TRUST_PROXY=1 npm start
 ```
 
 | Variable | Para qué sirve | Valor por defecto |
 |---|---|---|
 | `PORT` | Puerto del servidor | `3000` |
+| `LISTEN_HOST` | Dirección donde escucha (`127.0.0.1` = solo dentro del servidor, detrás de un proxy o túnel) | todas |
 | `DATA_DIR` | Carpeta de la base de datos y el plano | `./data` |
 | `CLAVE_ADMIN`, `CLAVE_LDIAZ`, `CLAVE_PMERCADO` | Contraseñas iniciales de las tres cuentas (solo el primer arranque) | al azar, se muestran en la consola |
 | `COOKIE_SECURE` | `true` cuando se publica con HTTPS | — |

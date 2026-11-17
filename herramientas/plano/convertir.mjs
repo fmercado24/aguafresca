@@ -171,14 +171,29 @@ for (const c of cadenas) {
   const n = c.map((l) => l.n);
   if (new Set(n).size !== n.length) problemas.push(`Una numeración repite números: ${n.join(',')}`);
 }
-// Manzanas con letras, de poniente a oriente según su centro.
+// Manzanas con letras. El plano solo trae números: las letras son las que usan los dueños y el contador
+// (confirmadas con ellos), en el orden de poniente a oriente en que quedan las numeraciones según su centro.
+// Si un plano nuevo trae otras manzanas, se usan letras correlativas de poniente a oriente y se avisa.
+const LETRAS_DUENOS = [
+  { lotes: 12, letra: 'B' }, // franja del extremo poniente
+  { lotes: 28, letra: 'A' }, // al sur, junto al camino público
+  { lotes: 9, letra: 'H' }, // al norte, entre la C y la G
+  { lotes: 16, letra: 'C' },
+  { lotes: 18, letra: 'G' }, // la del norte
+  { lotes: 4, letra: 'D' }, // la de 4 lotes pegada a la G
+  { lotes: 9, letra: 'E' }, // al sur-oriente, junto a la A
+  { lotes: 4, letra: 'F' }, // la de 4 lotes siguiente hacia el oriente
+  { lotes: 85, letra: 'I' }, // la grande del oriente, hacia el Río Colorado
+];
 const centroX = (c) => c.reduce((s, l) => s + l.punto.x, 0) / c.length;
 cadenas.sort((a, b) => centroX(a) - centroX(b));
+const calzan = cadenas.length === LETRAS_DUENOS.length && cadenas.every((c, i) => c.length === LETRAS_DUENOS[i].lotes);
+if (!calzan) problemas.push('Las manzanas del plano no calzan con las conocidas: se nombraron A, B, C… de poniente a oriente. Revise las letras con los dueños y ajuste LETRAS_DUENOS.');
 const sectores = cadenas.map((c, i) => {
-  const letra = String.fromCharCode(65 + i);
+  const letra = calzan ? LETRAS_DUENOS[i].letra : String.fromCharCode(65 + i);
   for (const l of c) { l.letra = letra; cadenaDe.set(l, i); }
   return { letra, nombre: `Manzana ${letra}`, lotes: c.length };
-});
+}).sort((a, b) => a.letra.localeCompare(b.letra));
 const codigo = (l) => `${l.letra}-${l.n}`;
 
 // ---------- 5. Lienzo: encuadre del fundo y escala ----------

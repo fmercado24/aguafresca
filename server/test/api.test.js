@@ -503,12 +503,13 @@ test('plano del loteo: crea las parcelas del topógrafo y no duplica al volver a
   const r = ok(await admin('POST', '/mapa/loteo'));
   assert.deepEqual([r.creadas, r.total], [185, 185]);
   const lista = ok(await admin('GET', '/parcelas'));
-  const b12 = lista.find((p) => p.numero === 'B-12');
-  assert.equal(b12.sector, 'Manzana B');
+  // Las letras de manzana son las del contador: la A es la de 28 lotes, la B la de 12, etc.
+  const b12 = lista.find((p) => p.numero === 'A-12');
+  assert.equal(b12.sector, 'Manzana A');
   assert.equal(b12.precio, 0, 'las parcelas del plano parten con precio por definir');
   assert.equal(b12.superficie_m2, 5000);
   assert.ok(b12.poligono.length >= 4);
-  assert.match(b12.deslindes, /^Norte: en 40,00 metros con .+; Sur: .+; Oriente: .+; Poniente: en 125,00 metros con Parcela B-13$/);
+  assert.match(b12.deslindes, /^Norte: en 40,00 metros con .+; Sur: .+; Oriente: .+; Poniente: en 125,00 metros con Parcela A-13$/);
 
   // El fondo del mapa pasa a ser el dibujo del plano, georreferenciado; lo ven todas las cuentas.
   const { plano } = ok(await contador('GET', '/config'));
@@ -528,14 +529,14 @@ test('plano del loteo: crea las parcelas del topógrafo y no duplica al volver a
 
 test('cambios en bloque: precio por m², precio fijo y sector, con confirmación en el registro', async () => {
   const lista = ok(await admin('GET', '/parcelas'));
-  const sectorA = lista.filter((p) => p.sector === 'Manzana A').map((p) => p.id);
+  const sectorA = lista.filter((p) => p.sector === 'Manzana B').map((p) => p.id);
   assert.equal(sectorA.length, 12);
   assert.equal((await contador('POST', '/parcelas/masivo', { ids: sectorA, accion: 'sector', sector: 'X' })).estado, 403, 'sector y códigos: solo el super administrador');
   assert.equal((await admin('POST', '/parcelas/masivo', { ids: sectorA, accion: 'precio_m2' })).estado, 400);
   assert.equal((await admin('POST', '/parcelas/masivo', { ids: [], accion: 'precio', monto: 1 })).estado, 400);
 
   assert.equal(ok(await admin('POST', '/parcelas/masivo', { ids: sectorA, accion: 'precio_m2', monto: 4_000 })).cambiadas, 12);
-  const a1 = ok(await admin('GET', '/parcelas')).find((p) => p.numero === 'A-1');
+  const a1 = ok(await admin('GET', '/parcelas')).find((p) => p.numero === 'B-1');
   assert.equal(a1.precio, 20_000_000);
   assert.equal(ok(await admin('POST', '/parcelas/masivo', { ids: sectorA, accion: 'precio_m2', monto: 4_000 })).cambiadas, 0);
 
@@ -545,15 +546,15 @@ test('cambios en bloque: precio por m², precio fijo y sector, con confirmación
   assert.deepEqual([fijo.cambiadas, fijo.omitidas], [1, 1]);
   assert.equal(ok(await admin('GET', '/parcelas')).find((p) => p.id === vendida.id).precio, vendida.precio);
 
-  // Renombrar el sector y el prefijo del código: A-12 → S17-12.
+  // Renombrar el sector y el prefijo del código: B-12 → S17-12.
   ok(await admin('POST', '/parcelas/masivo', { ids: sectorA, accion: 'sector', sector: 'Sitio 17', prefijo: 'S17' }));
   const s17 = ok(await admin('GET', '/parcelas')).filter((p) => p.sector === 'Sitio 17');
   assert.equal(s17.length, 12);
   assert.ok(s17.some((p) => p.numero === 'S17-12'));
   // Un prefijo que repetiría códigos existentes se rechaza sin cambiar nada.
-  const sectorB = lista.filter((p) => p.sector === 'Manzana B').map((p) => p.id);
+  const sectorB = lista.filter((p) => p.sector === 'Manzana A').map((p) => p.id);
   assert.equal((await admin('POST', '/parcelas/masivo', { ids: sectorB, accion: 'sector', sector: 'Otro', prefijo: 'S17' })).estado, 409);
-  assert.equal(ok(await admin('GET', '/parcelas')).filter((p) => p.sector === 'Manzana B').length, 28);
+  assert.equal(ok(await admin('GET', '/parcelas')).filter((p) => p.sector === 'Manzana A').length, 28);
 
   const b = ok(await admin('GET', '/bitacora'));
   assert.ok(b.some((x) => x.accion === 'parcelas_masivo' && /Precio por m² \$4\.000 en 12 parcelas/.test(x.detalle)));
@@ -562,13 +563,13 @@ test('cambios en bloque: precio por m², precio fijo y sector, con confirmación
 
 test('dueños: precios (solo el contador), registro de los cambios de ambos y datos personales en los documentos', async () => {
   const lista = ok(await contador('GET', '/parcelas'));
-  const c3 = lista.find((x) => x.numero === 'C-3');
+  const c3 = lista.find((x) => x.numero === 'H-3');
   // El contador cambia precios; el abogado no (es dinero). Ninguno de los dos edita el resto de la parcela.
   assert.equal((await contador('PUT', `/parcelas/${c3.id}`, { ...c3, precio: 1 })).estado, 403);
   assert.equal((await abogado('PUT', `/parcelas/${c3.id}/precio`, { precio: 1 })).estado, 403);
   assert.equal(ok(await contador('PUT', `/parcelas/${c3.id}/precio`, { precio: 22_500_000 })).cambios, 1);
   assert.equal(ok(await contador('PUT', `/parcelas/${c3.id}/precio`, { precio: 22_500_000 })).cambios, 0);
-  const sectorC = lista.filter((x) => x.sector === 'Manzana C').map((x) => x.id);
+  const sectorC = lista.filter((x) => x.sector === 'Manzana H').map((x) => x.id);
   assert.equal(ok(await contador('POST', '/parcelas/masivo', { ids: sectorC, accion: 'precio_m2', monto: 4_100 })).cambiadas, 9);
   assert.equal((await contador('POST', '/parcelas/masivo', { ids: sectorC, accion: 'sector', sector: 'Otro' })).estado, 403);
   assert.equal((await abogado('POST', '/mapa/loteo')).estado, 403, 'el mapa sigue siendo del super administrador');
@@ -590,7 +591,7 @@ test('dueños: precios (solo el contador), registro de los cambios de ambos y da
   for (const dueno of [abogado, contador]) {
     const registro = ok(await dueno('GET', '/bitacora'));
     assert.ok(registro.length > 0 && registro.every((e) => ['ldiaz', 'pmercado'].includes(e.cuenta)));
-    assert.ok(registro.some((e) => e.cuenta === 'pmercado' && /Parcela C-3: Precio: .+ → \$22\.500\.000/.test(e.detalle)));
+    assert.ok(registro.some((e) => e.cuenta === 'pmercado' && /Parcela H-3: Precio: .+ → \$22\.500\.000/.test(e.detalle)));
     assert.ok(registro.some((e) => e.cuenta === 'ldiaz' && e.accion === 'datos_personales'));
   }
   assert.ok(ok(await admin('GET', '/bitacora')).some((e) => e.cuenta === 'admin'));
@@ -887,7 +888,7 @@ test('formatos: RUT, celular, correo, fechas y rol de avalúo se validan y se gu
   assert.deepEqual([c.rut, c.telefono, c.email, c.aval_telefono], ['15678901-1', '+56 9 8765 4321', 'ana.formatos@correo.cl', '+56 2 2345 6789']);
   // También en visitas, cotizaciones y parcelas.
   assert.match((await contador('POST', '/visitas', { inicio: `${HOY}T10:00`, nombre: 'X', telefono: 'llamar' })).datos.error, /^Teléfono: solo puede tener números/);
-  const p = ok(await admin('GET', '/parcelas')).find((x) => x.numero === 'B-3');
+  const p = ok(await admin('GET', '/parcelas')).find((x) => x.numero === 'A-3');
   assert.match((await admin('PUT', `/parcelas/${p.id}`, { ...p, rol_sii: 'rol 12' })).datos.error, /^Rol de avalúo: use el formato número-número/);
   ok(await admin('PUT', `/parcelas/${p.id}`, { ...p, rol_sii: '1234-56' }));
   assert.match((await contador('POST', '/cotizaciones', { parcela_id: p.id, contacto_nombre: 'X', contacto_telefono: '2 2345 6789', fecha: HOY, valida_hasta: HOY, precio_lista: 1 })).datos.error, /^Celular del interesado: debe ser un celular/);

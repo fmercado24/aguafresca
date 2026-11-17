@@ -5,6 +5,7 @@
 #   ./iniciar.sh --demo           la primera vez, carga datos ficticios de demostración sobre el loteo real
 #   ./iniciar.sh --puerto 8080    usa otro puerto
 #   ./iniciar.sh --clave ldiaz    restablece la contraseña de una cuenta (admin, ldiaz o pmercado)
+#   ./iniciar.sh --preparar       deja todo listo (dependencias, compilación, cuentas) y termina sin iniciar
 #   ./iniciar.sh --ayuda
 #
 # La primera vez pide las contraseñas de las tres cuentas (Enter = se genera una al azar) y carga
@@ -15,6 +16,7 @@ cd "$(dirname "$0")"
 
 PUERTO="${PORT:-3000}"
 DEMO=0
+PREPARAR=0
 CUENTA_CLAVE=""
 DIR_DATOS="${DATA_DIR:-data}"
 BD="${DB_PATH:-$DIR_DATOS/aguafresca.db}"
@@ -25,11 +27,12 @@ if [ ! -t 1 ]; then negrita=""; verde=""; rojo=""; normal=""; fi
 paso() { printf '%s▸ %s%s\n' "$negrita" "$1" "$normal"; }
 error() { printf '%s✗ %s%s\n' "$rojo" "$1" "$normal" >&2; exit 1; }
 
-ayuda() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+ayuda() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --demo) DEMO=1 ;;
+    --preparar) PREPARAR=1 ;;
     --puerto|-p) shift; PUERTO="${1:-}"; [[ "$PUERTO" =~ ^[0-9]+$ ]] || error "Indique un número de puerto, por ejemplo: --puerto 8080" ;;
     --clave) shift; CUENTA_CLAVE="${1:-}"; [ -n "$CUENTA_CLAVE" ] || error "Indique la cuenta: --clave admin | ldiaz | pmercado" ;;
     --ayuda|-h|--help) ayuda ;;
@@ -105,6 +108,16 @@ if [ ! -f "$BD" ]; then
 elif [ "$DEMO" = 1 ]; then
   echo "Ya existe una base de datos en $DIR_DATOS/: no se cargan los datos de demostración."
   echo "Para empezar de cero, detenga el sistema y mueva o borre esa carpeta."
+fi
+
+# ---------- Solo preparar (lo usa iniciar-server.sh, que luego inicia el sistema como servicio) ----------
+
+if [ "$PREPARAR" = 1 ]; then
+  # Las cuentas normalmente se crean al iniciar el servidor; aquí se crean ahora para no perder las contraseñas elegidas.
+  DATA_DIR="$DIR_DATOS" node "${NODE_OPCIONES[@]}" --input-type=module \
+    -e "const { asegurarUsuarios } = await import('./server/auth.js'); asegurarUsuarios();"
+  paso "Listo: el sistema quedó preparado."
+  exit 0
 fi
 
 # ---------- Iniciar ----------

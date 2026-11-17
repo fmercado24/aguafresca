@@ -171,7 +171,7 @@ db.tx(() => {
   visita(luis, -3, '16:00', 'Familia Castro Lagos', '+56 9 5550 0202', ['I-14', 'I-16'], 'realizada', 'Les gustó el lote I-14. Evaluarán financiamiento.');
   visita(patricio, 0, '15:30', 'Tomás Aguilera', '+56 9 5550 0201', ['I-2'], 'confirmada', 'Viene con su pareja. Llevar cotización impresa.');
   visita(luis, 1, '10:00', 'Andrea Pizarro', '+56 9 5550 0302', ['I-77', 'I-80', 'I-81'], 'programada', 'Interesada en lotes junto al río.');
-  visita(patricio, 1, '15:30', 'Cristóbal Mena', '+56 9 5550 0303', ['B-24', 'B-26']);
+  visita(patricio, 1, '15:30', 'Cristóbal Mena', '+56 9 5550 0303', ['A-24', 'A-26']);
   visita(luis, 3, '12:00', PERSONAS[9][0], '+56 9 5550 0119', ['I-9'], 'confirmada', 'Segunda visita; quiere revisar deslindes.');
   visita(patricio, 6, '11:00', 'Valentina Rojas', '+56 9 5550 0304', ['I-33', 'I-34', 'I-35']);
   visita(luis, 9, '16:30', 'Ignacio Paredes', '+56 9 5550 0305', ['I-38']);
