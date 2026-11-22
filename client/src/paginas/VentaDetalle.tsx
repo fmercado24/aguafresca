@@ -1,9 +1,11 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Ban, Banknote, Download, FileSignature, FileText, History, Pencil, Printer, Receipt, RotateCcw, Sheet, Trash2, TriangleAlert } from 'lucide-react';
+import { Ban, Banknote, CalendarClock, Download, FileSignature, FileText, History, Pencil, Printer, Receipt, RotateCcw, Sheet, Trash2, TriangleAlert } from 'lucide-react';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
 import { Membrete } from '../componentes/Membrete';
+import { PieFirma } from '../componentes/PieFirma';
+import { AplazarCuotas } from '../componentes/AplazarCuotas';
 import { ACCIONES_REGISTRO, ListaCambios, listarCambios } from '../componentes/Cambios';
 import { MEDIOS_PAGO, descargarCsv, fecha, fechaHoraRegistro, fechaLarga, fechaRegistro, formatearRut, numero, pesos, plural, porcentaje } from '../formato';
 import type { Cuota, EntradaRegistro, Pago, VentaDetalle } from '../tipos';
@@ -308,6 +310,7 @@ function Detalle({ id }: { id: number }) {
   const [editandoPago, setEditandoPago] = useState<Pago | null>(null);
   const [anulandoPago, setAnulandoPago] = useState<Pago | null>(null);
   const [anulandoVenta, setAnulandoVenta] = useState(false);
+  const [aplazando, setAplazando] = useState(false);
 
   // Permite llegar desde otra pantalla directo al registro de pago (…?pago=1).
   useEffect(() => {
@@ -417,7 +420,9 @@ function Detalle({ id }: { id: number }) {
           <Tarjeta titulo="Condiciones de la venta" className="mb-4">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
               <Par etiqueta="Parcela">{parcela.numero}{parcela.sector ? ` · ${parcela.sector}` : ''} · {numero(parcela.superficie_m2)} m²</Par>
-              <Par etiqueta="Forma de pago">{hayCuotas ? `${v.n_cuotas} cuotas de ${pesos(v.valor_cuota)}` : 'Contado'}</Par>
+              <Par etiqueta="Forma de pago">
+                {hayCuotas ? `${t.cuotas_total} cuotas de ${pesos(v.valor_cuota)}${t.cuotas_aplazadas ? ` y ${plural(t.cuotas_aplazadas, 'aplazada', 'aplazadas')}` : ''}` : 'Contado'}
+              </Par>
               <Par etiqueta="Interés">{hayCuotas ? `${porcentaje(v.tasa_mensual)} mensual` : '—'}</Par>
               <Par etiqueta="Intereses del crédito">{hayCuotas ? pesos(t.intereses_totales) : '—'}</Par>
               <Par etiqueta="Primera cuota">{v.fecha_primera_cuota ? fecha(v.fecha_primera_cuota) : '—'}</Par>
@@ -441,10 +446,11 @@ function Detalle({ id }: { id: number }) {
           {pestana === 'cuotas' && (
             <Tarjeta
               relleno={false}
-              titulo={hayCuotas ? `${v.n_cuotas} cuotas · ${porcentaje(v.tasa_mensual)} mensual` : 'Pago al contado'}
+              titulo={hayCuotas ? `${t.cuotas_total} cuotas${t.cuotas_aplazadas ? ` + ${t.cuotas_aplazadas} aplazadas` : ''} · ${porcentaje(v.tasa_mensual)} mensual` : 'Pago al contado'}
               acciones={
                 <>
                   <Boton chico variante="secundario" icono={Download} onClick={() => exportarTabla(d)}>Excel</Boton>
+                  {editaTabla && vigente && hayCuotas && <Boton chico variante="secundario" icono={CalendarClock} onClick={() => setAplazando(true)}>Aplazar cuotas</Boton>}
                   {editaTabla && v.estado !== 'anulada' && <EnlaceBoton chico icono={Sheet} to={`/ventas/${id}/tabla`}>Editar tabla</EnlaceBoton>}
                 </>
               }
@@ -464,7 +470,7 @@ function Detalle({ id }: { id: number }) {
                 </thead>
                 <tbody>
                   {cuotas.map((c) => (
-                    <tr key={c.id} className={c.estado === 'atrasada' && vigente ? 'bg-red-50/50' : ''}>
+                    <tr key={c.id} className={c.estado === 'atrasada' && vigente ? 'bg-red-50/50' : c.estado === 'aplazada' ? 'bg-blue-50/40 text-stone-600' : ''}>
                       <td className={`${td} py-2 font-medium`}>{nombreCuota(c, hayCuotas)}</td>
                       <td className={`${td} whitespace-nowrap py-2`}>{fecha(c.fecha_vencimiento)}</td>
                       <td className={`${td} ${num} py-2 font-medium`}>{pesos(c.monto)}</td>
@@ -585,9 +591,15 @@ function Detalle({ id }: { id: number }) {
             <div><span className="text-stone-600">Precio de venta:</span> {pesos(v.precio)}</div>
             <div><span className="text-stone-600">Pie:</span> {pesos(v.pie)}</div>
             {hayCuotas && <div><span className="text-stone-600">Saldo a crédito:</span> {pesos(v.monto_financiado)}</div>}
-            {hayCuotas && <div><span className="text-stone-600">Condiciones:</span> {v.n_cuotas} cuotas de {pesos(v.valor_cuota)} · {porcentaje(v.tasa_mensual)} mensual</div>}
+            {hayCuotas && <div><span className="text-stone-600">Condiciones:</span> {t.cuotas_total} cuotas de {pesos(v.valor_cuota)}{t.cuotas_aplazadas ? ` y ${t.cuotas_aplazadas} aplazadas` : ''} · {porcentaje(v.tasa_mensual)} mensual</div>}
             <div><span className="text-stone-600">Pagado a la fecha:</span> {pesos(t.pagado)}</div>
             <div><span className="text-stone-600">Saldo por pagar:</span> {pesos(t.saldo)}</div>
+            {hayCuotas && (
+              <div className="col-span-2">
+                <span className="text-stone-600">Cuotas pendientes:</span>{' '}
+                {t.cuotas_pendientes === 0 ? 'ninguna' : t.cuotas_pendientes === 1 ? `1, la N° ${t.pendiente_desde}` : `${t.cuotas_pendientes}, de la N° ${t.pendiente_desde} a la N° ${t.pendiente_hasta}`}
+              </div>
+            )}
           </div>
           <table className="w-full border-collapse text-xs tabular-nums">
             <thead>
@@ -608,7 +620,7 @@ function Detalle({ id }: { id: number }) {
                   <td className="border border-stone-300 px-2 py-0.5 text-right">{pesos(c.saldo_insoluto)}</td>
                   <td className="border border-stone-300 px-2 py-0.5 text-right">{c.pagado > 0 ? pesos(c.pagado) : ''}</td>
                   <td className="whitespace-nowrap border border-stone-300 px-2 py-0.5">
-                    {c.estado === 'pagada' ? `Pagada ${fecha(c.fecha_pago)}` : c.estado === 'atrasada' ? `Atrasada (${c.dias_atraso} días)` : c.estado === 'parcial' ? 'Abono parcial' : 'Por vencer'}
+                    {c.estado === 'aplazada' ? 'Aplazada' : c.estado === 'pagada' ? `Pagada ${fecha(c.fecha_pago)}` : c.estado === 'atrasada' ? `Atrasada (${c.dias_atraso} días)` : c.estado === 'parcial' ? 'Abono parcial' : 'Por vencer'}
                   </td>
                 </tr>
               ))}
@@ -623,8 +635,10 @@ function Detalle({ id }: { id: number }) {
               </tr>
             </tbody>
           </table>
+          <PieFirma className="mt-10" />
         </div>
 
+        {aplazando && <AplazarCuotas d={d} alCerrar={() => setAplazando(false)} alGuardar={() => { setAplazando(false); consulta.recargar(); historial.recargar(); }} />}
         {pagando && <FormularioPago d={d} alCerrar={() => setPagando(false)} alGuardar={() => { setPagando(false); setPestana('pagos'); consulta.recargar(); }} />}
         {editandoPago && <FormularioEditarPago pago={editandoPago} alCerrar={() => setEditandoPago(null)} alGuardar={() => { setEditandoPago(null); recargarTodo(); }} />}
         {anulandoPago && (

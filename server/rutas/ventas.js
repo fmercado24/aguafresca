@@ -5,7 +5,7 @@ import { entradaConAnterior } from '../lib/bitacora.js';
 import { cerrarSolicitudConVenta } from '../lib/solicitudes.js';
 import {
   MEDIOS_PAGO, crearVenta, registrarPago, anularPago, editarPago, anularVenta, eliminarVenta, detalleVenta,
-  leerTabla, aplicarTabla,
+  leerTabla, aplicarTabla, instantaneaTabla, aplazarCuotas, decorarCuota, totalesDe,
 } from '../lib/creditos.js';
 import { tablaAmortizacion, tablaPorCuota, tasaAnualEquivalente } from '../lib/finanzas.js';
 import { hoy } from '../lib/fechas.js';
@@ -68,7 +68,8 @@ rutasVentas.get('/ventas', (req, res) => {
               WHERE c.venta_id = v.id AND c.pagado < c.monto AND c.fecha_vencimiento < ?) AS atrasado,
             (SELECT COUNT(*) FROM cuotas c
               WHERE c.venta_id = v.id AND c.pagado < c.monto AND c.fecha_vencimiento < ?) AS n_atrasadas,
-            (SELECT COUNT(*) FROM cuotas c WHERE c.venta_id = v.id AND c.tipo = 'cuota' AND c.pagado >= c.monto) AS cuotas_pagadas,
+            (SELECT COUNT(*) FROM cuotas c WHERE c.venta_id = v.id AND c.tipo = 'cuota' AND c.monto > 0 AND c.pagado >= c.monto) AS cuotas_pagadas,
+            (SELECT COUNT(*) FROM cuotas c WHERE c.venta_id = v.id AND c.tipo = 'cuota' AND c.monto > 0) AS cuotas_a_pagar,
             (SELECT MIN(fecha_vencimiento) FROM cuotas c WHERE c.venta_id = v.id AND c.pagado < c.monto) AS proximo_vencimiento
        FROM ventas v
        JOIN parcelas p ON p.id = v.parcela_id
@@ -127,6 +128,60 @@ rutasVentas.delete('/ventas/:id', requiere('contabilidad'), (req, res) => {
 // ---------- Tabla de amortización: edición libre (contador y super administrador) ----------
 
 const motivoObligatorio = (cuerpo) => leer(cuerpo, { motivo: texto({ req: true, max: 500 }) }).motivo;
+
+// Aplazar cuotas: esos meses no se pagan (cuota $0), se carga solo el interés, que aumenta la deuda de capital,
+// y las cuotas siguientes se corren. Con "simular" solo devuelve cómo quedaría, sin guardar.
+const datosAplazar = (cuerpo) => leer(cuerpo, {
+  desde: entero({ req: true, min: 1, max: 600 }),
+  meses: entero({ req: true, min: 1, max: 36 }),
+  simular: booleano(),
+});
+
+const resumenAplazamiento = (antes, despues, desde, meses) => {
+  const financiado = despues.precio - despues.pie;
+  const capital = (t, hasta) => financiado - t.cuotas.slice(0, hasta).reduce((s, c) => s + c.amortizacion, 0);
+  return {
+    desde, meses,
+    cuotas_antes: antes.cuotas.length,
+    cuotas_despues: despues.cuotas.length,
+    ultima_antes: antes.cuotas.at(-1)?.fecha_vencimiento ?? null,
+    ultima_despues: despues.cuotas.at(-1)?.fecha_vencimiento ?? null,
+    interes_aplazado: despues.cuotas.slice(desde - 1, desde - 1 + meses).reduce((s, c) => s + c.interes, 0),
+    capital_despues: capital(despues, desde - 1 + meses),
+    total_antes: antes.cuotas.reduce((s, c) => s + c.interes + c.amortizacion, 0),
+    total_despues: despues.cuotas.reduce((s, c) => s + c.interes + c.amortizacion, 0),
+    cuotas: despues.cuotas,
+  };
+};
+
+rutasVentas.post('/ventas/:id/aplazar', requiere('amortizacion'), (req, res) => {
+  const ventaId = idDe(req.params.id);
+  const { desde, meses, simular } = datosAplazar(req.body);
+  const venta = db.get('SELECT estado FROM ventas WHERE id = ?', ventaId);
+  if (!venta) throw new ErrorApp('La venta no existe', 404);
+  if (venta.estado !== 'vigente') throw new ErrorApp('Solo se aplazan cuotas de una venta vigente', 409);
+  const cuota = db.get("SELECT monto, pagado FROM cuotas WHERE venta_id = ? AND tipo = 'cuota' AND numero = ?", ventaId, desde);
+  if (!cuota) throw new ErrorApp(`La venta no tiene cuota N° ${desde}`, 404);
+  if (cuota.pagado > 0) throw new ErrorApp(`La cuota N° ${desde} ya tiene pagos: aplace una cuota que no se haya pagado`, 409);
+  if (cuota.monto === 0) throw new ErrorApp(`La cuota N° ${desde} ya está aplazada`, 409);
+  const antes = instantaneaTabla(ventaId);
+  const despues = aplazarCuotas(antes, desde, meses);
+  const resumen = resumenAplazamiento(antes, despues, desde, meses);
+  if (simular) return res.json(resumen);
+  const motivo = motivoObligatorio(req.body);
+  aplicarTabla(ventaId, leerTabla(despues), {
+    usuarioId: req.usuario.id, motivo,
+    detalleExtra: `${meses === 1 ? 'Cuota' : `${meses} cuotas`} aplazada${meses === 1 ? '' : 's'} desde la N° ${desde}`,
+  });
+  res.json(resumen);
+});
+
+// El editor de la tabla aplaza sobre la tabla que tiene en pantalla (todavía sin guardar).
+rutasVentas.post('/tabla/aplazar', requiere('amortizacion'), (req, res) => {
+  const { desde, meses } = datosAplazar(req.body);
+  const antes = leerTabla(req.body.tabla);
+  res.json(resumenAplazamiento(antes, aplazarCuotas(antes, desde, meses), desde, meses));
+});
 
 rutasVentas.put('/ventas/:id/amortizacion', requiere('amortizacion'), (req, res) => {
   const motivo = motivoObligatorio(req.body);
@@ -213,6 +268,16 @@ rutasVentas.get('/pagos/:id', (req, res) => {
         WHERE pc.pago_id = ? ORDER BY c.numero`,
       pago.id,
     ),
-    saldo_venta: db.get('SELECT COALESCE(SUM(monto - pagado), 0) AS s FROM cuotas WHERE venta_id = ?', pago.venta_id).s,
+    // Cuotas que quedan por pagar a la fecha de emisión: cuántas y de cuál a cuál.
+    pendientes: (() => {
+      const t = totalesDe(db.all('SELECT * FROM cuotas WHERE venta_id = ? ORDER BY numero', pago.venta_id).map((c) => decorarCuota(c, hoy(), 0)));
+      const primera = t.pendiente_desde ? db.get("SELECT monto, pagado FROM cuotas WHERE venta_id = ? AND tipo = 'cuota' AND numero = ?", pago.venta_id, t.pendiente_desde) : null;
+      return {
+        n: t.cuotas_pendientes, desde: t.pendiente_desde, hasta: t.pendiente_hasta,
+        saldo_primera: primera && primera.pagado > 0 ? primera.monto - primera.pagado : null,
+        pie_pendiente: db.get("SELECT COALESCE(SUM(monto - pagado), 0) AS s FROM cuotas WHERE venta_id = ? AND tipo = 'pie'", pago.venta_id).s,
+        aplazadas: db.get("SELECT COUNT(*) AS n FROM cuotas WHERE venta_id = ? AND tipo = 'cuota' AND monto = 0 AND numero BETWEEN ? AND ?", pago.venta_id, t.pendiente_desde ?? 0, t.pendiente_hasta ?? 0).n,
+      };
+    })(),
   });
 });

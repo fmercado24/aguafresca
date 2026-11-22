@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as EventoPuntero } from 'react';
-import { Maximize, ZoomIn, ZoomOut } from 'lucide-react';
+import { LocateFixed, Map as IconoPlano, Maximize, Satellite, ZoomIn, ZoomOut } from 'lucide-react';
 import { useDatos } from '../api';
 import { numero, precioLista } from '../formato';
 import type { ClaseFondo, EstadoParcela, FondoPlano, Parcela, Plano, Punto } from '../tipos';
@@ -51,6 +51,46 @@ export function coordenadas(p: Parcela, plano: Plano | null): [number, number] |
   if (!g || !p.poligono || p.poligono.length < 3) return null;
   const [x, y] = centroide(p.poligono);
   return [g.lat[0] * x + g.lat[1] * y + g.lat[2], g.lng[0] * x + g.lng[1] * y + g.lng[2]];
+}
+
+/** Punto del plano que corresponde a una latitud y longitud (la georreferencia es una transformación afín). */
+export function geoALienzo(plano: Plano | null, lat: number, lng: number): Punto | null {
+  const g = plano?.georreferencia;
+  if (!g) return null;
+  const [a, b, c] = g.lng;
+  const [d, e, f] = g.lat;
+  const det = a * e - b * d;
+  if (!det) return null;
+  const u = lng - c, v = lat - f;
+  return [(e * u - b * v) / det, (a * v - d * u) / det];
+}
+
+export function puntoDentro([x, y]: Punto, pts: Punto[]) {
+  let dentro = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) dentro = !dentro;
+  }
+  return dentro;
+}
+
+function distanciaASegmento([px, py]: Punto, [ax, ay]: Punto, [bx, by]: Punto) {
+  const dx = bx - ax, dy = by - ay;
+  const t = dx || dy ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy))) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** Parcela donde está un punto del plano o, si cae fuera de todas, la más cercana y a qué distancia (en unidades del plano). */
+export function parcelaEnPunto(parcelas: Parcela[], punto: Punto): { parcela: Parcela; dentro: boolean; distancia: number } | null {
+  let mejor: { parcela: Parcela; dentro: boolean; distancia: number } | null = null;
+  for (const p of parcelas) {
+    const pts = p.poligono;
+    if (!pts || pts.length < 3) continue;
+    if (puntoDentro(punto, pts)) return { parcela: p, dentro: true, distancia: 0 };
+    const d = Math.min(...pts.map((q, i) => distanciaASegmento(punto, q, pts[(i + 1) % pts.length])));
+    if (!mejor || d < mejor.distancia) mejor = { parcela: p, dentro: false, distancia: d };
+  }
+  return mejor;
 }
 
 export const enlaceGoogleMaps = ([lat, lng]: [number, number]) =>
@@ -118,6 +158,53 @@ function RotulosFondo({ fondo, pxPorUnidad }: { fondo: FondoPlano; pxPorUnidad: 
   );
 }
 
+// ---------- Imagen satelital de fondo ----------
+// Teselas de Esri World Imagery (proyección Web Mercator). Como el plano está georreferenciado con una transformación
+// afín, cada tesela de 256 px se ubica en el lienzo con una matriz: en el tamaño de una tesela la curvatura es despreciable.
+
+const TESELA = 256;
+const ZOOM_SATELITE = { min: 10, max: 18 };
+const urlTesela = (z: number, x: number, y: number) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+const lngTesela = (x: number, z: number) => (x / 2 ** z) * 360 - 180;
+const latTesela = (y: number, z: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
+const teselaX = (lng: number, z: number) => Math.floor(((lng + 180) / 360) * 2 ** z);
+const teselaY = (lat: number, z: number) => {
+  const r = (lat * Math.PI) / 180;
+  return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z);
+};
+
+interface Tesela { clave: string; url: string; matriz: string }
+
+function teselasVisibles(plano: Plano, vista: Vista, anchoPx: number): Tesela[] {
+  const g = plano.georreferencia;
+  if (!g || !anchoPx || !plano.metros_por_unidad) return [];
+  const aGeo = (x: number, y: number) => [g.lng[0] * x + g.lng[1] * y + g.lng[2], g.lat[0] * x + g.lat[1] * y + g.lat[2]];
+  const esquinas = [[vista.x, vista.y], [vista.x + vista.w, vista.y], [vista.x, vista.y + vista.h], [vista.x + vista.w, vista.y + vista.h]].map(([x, y]) => aGeo(x, y));
+  const lngs = esquinas.map((e) => e[0]), lats = esquinas.map((e) => e[1]);
+  const latCentro = (Math.min(...lats) + Math.max(...lats)) / 2;
+  // Zoom con el que un píxel de la imagen es del tamaño de un píxel de la pantalla (o más detallado).
+  const metrosPorPx = (plano.metros_por_unidad * vista.w) / anchoPx;
+  let z = Math.ceil(Math.log2((156543.03392 * Math.cos((latCentro * Math.PI) / 180)) / metrosPorPx));
+  z = Math.min(ZOOM_SATELITE.max, Math.max(ZOOM_SATELITE.min, z));
+  for (;; z--) {
+    const x0 = teselaX(Math.min(...lngs), z), x1 = teselaX(Math.max(...lngs), z);
+    const y0 = teselaY(Math.max(...lats), z), y1 = teselaY(Math.min(...lats), z);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 80 && z > ZOOM_SATELITE.min) continue;
+    const teselas: Tesela[] = [];
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        const p0 = geoALienzo(plano, latTesela(y, z), lngTesela(x, z));
+        const px = geoALienzo(plano, latTesela(y, z), lngTesela(x + 1, z));
+        const py = geoALienzo(plano, latTesela(y + 1, z), lngTesela(x, z));
+        if (!p0 || !px || !py) continue;
+        const m = [(px[0] - p0[0]) / TESELA, (px[1] - p0[1]) / TESELA, (py[0] - p0[0]) / TESELA, (py[1] - p0[1]) / TESELA, p0[0], p0[1]];
+        teselas.push({ clave: `${z}/${x}/${y}`, url: urlTesela(z, x, y), matriz: `matrix(${m.join(' ')})` });
+      }
+    }
+    return teselas;
+  }
+}
+
 // ---------- Escala gráfica ----------
 
 const LARGOS = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
@@ -139,7 +226,9 @@ function Escala({ metrosPorPx }: { metrosPorPx: number }) {
   );
 }
 
-export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenuar, trazo, alAgregarPunto }: {
+export function MapaParcelas({
+  parcelas, plano, seleccion, alSeleccionar, atenuar, trazo, alAgregarPunto, ubicacion, enfocar, alUbicarme, ubicando, satelite: pideSatelite, alCambiarSatelite,
+}: {
   parcelas: Parcela[];
   plano: Plano | null;
   seleccion: number | null;
@@ -149,6 +238,16 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
   /** Modo dibujo: vértices del contorno que se está trazando. */
   trazo?: Punto[] | null;
   alAgregarPunto?: (p: Punto) => void;
+  /** Posición de quien mira el mapa (GPS del celular) y su margen de error, en unidades del plano. */
+  ubicacion?: { punto: Punto; radio: number } | null;
+  /** Centra el mapa en un punto (cambia `clave` para volver a centrar). */
+  enfocar?: { punto: Punto; clave: number } | null;
+  /** Botón "Mi ubicación" (solo si el plano está georreferenciado). */
+  alUbicarme?: () => void;
+  ubicando?: boolean;
+  /** Imagen satelital de fondo en vez del dibujo del plano (solo con el plano georreferenciado). */
+  satelite?: boolean;
+  alCambiarSatelite?: (satelite: boolean) => void;
 }) {
   const ALTO = altoLogico(plano);
   const svg = useRef<SVGSVGElement>(null);
@@ -158,6 +257,7 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
   const punteros = useRef(new Map<number, { x: number; y: number }>());
   const gesto = useRef<{ movido: number; objetivo: number | null; distancia: number | null } | null>(null);
   const dibujando = !!alAgregarPunto;
+  const satelite = !!pideSatelite && !!plano?.georreferencia;
   const vectorial = plano?.tipo === 'vectorial';
   const fondo = useDatos<FondoPlano>(vectorial ? `/mapa/plano?v=${plano!.version}` : null).datos;
 
@@ -177,6 +277,14 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
   }, [acotar]);
 
   useEffect(() => setVista({ x: 0, y: 0, w: ANCHO, h: ALTO }), [ALTO]);
+
+  // Centrar en la ubicación: acerca lo suficiente para ver la parcela y sus vecinas.
+  useEffect(() => {
+    if (!enfocar) return;
+    const w = Math.min(ANCHO, ANCHO / 5);
+    setVista(acotar({ w, h: 0, x: enfocar.punto[0] - w / 2, y: enfocar.punto[1] - (w * ALTO) / ANCHO / 2 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enfocar?.clave]);
 
   // Ancho real en pantalla: para decidir qué rótulos se alcanzan a leer y para la escala gráfica.
   useEffect(() => {
@@ -278,9 +386,10 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
   const radioVertice = vista.w / 140;
   // Hasta medir la pantalla se muestran todos los rótulos.
   const pxPorUnidad = anchoPx ? anchoPx / vista.w : Infinity;
+  const teselas = useMemo(() => (satelite && plano ? teselasVisibles(plano, vista, anchoPx) : []), [satelite, plano, vista, anchoPx]);
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-stone-200 bg-[#f3f2ec]">
+    <div className={`relative overflow-hidden rounded-xl border border-stone-200 ${satelite ? 'bg-[#2b3326]' : 'bg-[#f3f2ec]'}`}>
       <svg
         ref={svg}
         viewBox={`${vista.x} ${vista.y} ${vista.w} ${vista.h}`}
@@ -302,8 +411,17 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
           </pattern>
         </defs>
 
-        {plano && !vectorial && <image href={`/api/mapa/plano?v=${plano.version}`} x={0} y={0} width={ANCHO} height={ALTO} preserveAspectRatio="none" />}
-        {fondo && <DibujoFondo fondo={fondo} />}
+        {satelite ? (
+          <g pointerEvents="none">
+            {/* Un poco más grandes que 256 px para que no se vean las uniones entre teselas */}
+            {teselas.map((t) => <image key={t.clave} href={t.url} width={TESELA + 0.6} height={TESELA + 0.6} transform={t.matriz} preserveAspectRatio="none" />)}
+          </g>
+        ) : (
+          <>
+            {plano && !vectorial && <image href={`/api/mapa/plano?v=${plano.version}`} x={0} y={0} width={ANCHO} height={ALTO} preserveAspectRatio="none" />}
+            {fondo && <DibujoFondo fondo={fondo} />}
+          </>
+        )}
 
         {conContorno.map(({ p, puntos, centro, letra }) => {
           const elegida = p.id === seleccion;
@@ -313,7 +431,7 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
               <polygon
                 points={puntos}
                 fill={p.estado === 'bloqueada' ? 'url(#trama-bloqueada)' : COLOR_ESTADO[p.estado]}
-                fillOpacity={elegida ? 1 : sobre?.id === p.id ? 0.95 : 0.84}
+                fillOpacity={satelite ? (elegida ? 0.6 : sobre?.id === p.id ? 0.5 : 0.32) : elegida ? 1 : sobre?.id === p.id ? 0.95 : 0.84}
                 stroke={elegida ? '#0b0b0b' : '#ffffff'}
                 strokeWidth={elegida ? 3 : 1.5}
                 strokeLinejoin="round"
@@ -323,7 +441,8 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
                 <text
                   x={centro[0]} y={centro[1]} dy="0.35em" textAnchor="middle" pointerEvents="none"
                   fontSize={Math.min(letra, NUMERO_MAXIMO / pxPorUnidad)} fontWeight={600}
-                  fill={p.estado === 'reservada' ? '#0b0b0b' : '#ffffff'}
+                  fill={p.estado === 'reservada' && !satelite ? '#0b0b0b' : '#ffffff'}
+                  {...(satelite ? { stroke: '#000000', strokeOpacity: 0.75, strokeWidth: 2.5, paintOrder: 'stroke', vectorEffect: 'non-scaling-stroke' } : {})}
                 >
                   {p.numero}
                 </text>
@@ -332,12 +451,19 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
           );
         })}
 
-        {fondo && <RotulosFondo fondo={fondo} pxPorUnidad={pxPorUnidad} />}
+        {fondo && !satelite && <RotulosFondo fondo={fondo} pxPorUnidad={pxPorUnidad} />}
 
         {/* El contorno elegido se vuelve a dibujar encima para que su borde no quede tapado por los vecinos */}
         {conContorno.filter(({ p }) => p.id === seleccion).map(({ p, puntos }) => (
           <polygon key={p.id} points={puntos} fill="none" stroke="#0b0b0b" strokeWidth={3} strokeLinejoin="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />
         ))}
+
+        {ubicacion && (
+          <g pointerEvents="none">
+            <circle cx={ubicacion.punto[0]} cy={ubicacion.punto[1]} r={ubicacion.radio} fill="#2563eb" fillOpacity={0.15} stroke="#2563eb" strokeOpacity={0.5} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+            <circle cx={ubicacion.punto[0]} cy={ubicacion.punto[1]} r={Math.min(8 / pxPorUnidad, 6)} fill="#2563eb" stroke="#ffffff" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+          </g>
+        )}
 
         {trazo && trazo.length > 0 && (
           <g pointerEvents="none">
@@ -353,9 +479,31 @@ export function MapaParcelas({ parcelas, plano, seleccion, alSeleccionar, atenua
         <button onClick={() => acercar(1.5)} disabled={zoom >= ZOOM_MAXIMO} aria-label="Acercar" title="Acercar" className="p-2 text-stone-700 hover:bg-stone-100 disabled:opacity-40"><ZoomIn className="size-4" /></button>
         <button onClick={() => acercar(1 / 1.5)} disabled={zoom <= 1} aria-label="Alejar" title="Alejar" className="border-t border-stone-200 p-2 text-stone-700 hover:bg-stone-100 disabled:opacity-40"><ZoomOut className="size-4" /></button>
         <button onClick={() => setVista({ x: 0, y: 0, w: ANCHO, h: ALTO })} disabled={zoom <= 1} aria-label="Ver todo el plano" title="Ver todo el plano" className="border-t border-stone-200 p-2 text-stone-700 hover:bg-stone-100 disabled:opacity-40"><Maximize className="size-4" /></button>
+        {alCambiarSatelite && plano?.georreferencia && (
+          <button
+            onClick={() => alCambiarSatelite(!satelite)} aria-pressed={satelite}
+            aria-label={satelite ? 'Ver el dibujo del plano' : 'Ver la imagen satelital'} title={satelite ? 'Ver el dibujo del plano' : 'Ver la imagen satelital'}
+            className={`border-t border-stone-200 p-2 hover:bg-stone-100 ${satelite ? 'bg-marca-50 text-marca-700' : 'text-stone-700'}`}
+          >
+            {satelite ? <IconoPlano className="size-4" /> : <Satellite className="size-4" />}
+          </button>
+        )}
+        {alUbicarme && (
+          <button
+            onClick={alUbicarme} aria-label="Mi ubicación" title="Mi ubicación: en qué parcela estoy" aria-pressed={!!ubicando}
+            className={`border-t border-stone-200 p-2 hover:bg-stone-100 ${ubicando ? 'bg-blue-50 text-blue-700' : 'text-stone-700'}`}
+          >
+            <LocateFixed className="size-4" />
+          </button>
+        )}
       </div>
 
       {plano?.metros_por_unidad && anchoPx > 0 && <Escala metrosPorPx={(plano.metros_por_unidad * vista.w) / anchoPx} />}
+      {satelite && (
+        <div className="pointer-events-none absolute left-0 top-0 rounded-br bg-white/75 px-1.5 py-0.5 text-[10px] text-stone-700">
+          Imagen satelital: Esri, Maxar, Earthstar Geographics
+        </div>
+      )}
 
       {parcelaSobre && !dibujando && (
         <div

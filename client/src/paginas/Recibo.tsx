@@ -2,15 +2,28 @@ import { useParams } from 'react-router';
 import { Printer } from 'lucide-react';
 import { useDatos } from '../api';
 import { Membrete } from '../componentes/Membrete';
-import { useConfig } from '../contexto';
-import { MEDIOS_PAGO, fecha, fechaLarga, formatearRut, pesos } from '../formato';
+import { PieFirma } from '../componentes/PieFirma';
+import { MEDIOS_PAGO, fecha, fechaLarga, formatearRut, pesos, plural } from '../formato';
 import type { Recibo } from '../tipos';
 import { Boton, Carga, Encabezado } from '../ui';
+
+/** Cuántas cuotas quedan por pagar y de cuál a cuál (lo que el cliente quiere saber al pagar). */
+function textoPendientes(p: Recibo['pendientes']) {
+  const partes: string[] = [];
+  if (p.n === 0) {
+    partes.push(p.pie_pendiente > 0 ? 'No quedan cuotas pendientes.' : 'A la fecha de emisión no quedan cuotas pendientes: la parcela está totalmente pagada.');
+  } else {
+    const rango = p.n === 1 || p.desde === p.hasta ? `la N° ${p.desde}` : `de la N° ${p.desde} a la N° ${p.hasta}`;
+    partes.push(`Quedan ${plural(p.n, 'cuota pendiente', 'cuotas pendientes')}: ${rango}${p.aplazadas > 0 ? ` (sin contar ${plural(p.aplazadas, 'cuota aplazada', 'cuotas aplazadas')})` : ''}.`);
+    if (p.saldo_primera) partes.push(`La cuota N° ${p.desde} tiene un abono y le faltan ${pesos(p.saldo_primera)}.`);
+  }
+  if (p.pie_pendiente > 0) partes.push(`Queda pendiente ${pesos(p.pie_pendiente)} del pie.`);
+  return partes.join(' ');
+}
 
 /** Comprobante imprimible de un pago recibido. */
 export function ReciboPagina() {
   const { id } = useParams();
-  const { empresa } = useConfig();
   const consulta = useDatos<Recibo>(`/pagos/${id}`);
 
   return (
@@ -79,14 +92,9 @@ export function ReciboPagina() {
               </div>
 
               {r.pago.observacion && <p className="mt-3 text-sm text-stone-700">Observación: {r.pago.observacion}</p>}
-              <p className="mt-3 text-sm text-stone-700">Saldo por pagar de la venta a la fecha de emisión: <strong>{pesos(r.saldo_venta)}</strong></p>
+              <p className="mt-3 rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-900">{textoPendientes(r.pendientes)}</p>
 
-              <div className="mt-16 flex justify-end">
-                <div className="w-64 border-t border-stone-500 pt-1 text-center text-sm">
-                  {empresa.razon_social}
-                  {r.pago.usuario && <div className="text-xs text-stone-500">Registrado por {r.pago.usuario}</div>}
-                </div>
-              </div>
+              <PieFirma className="mt-12" extra={r.pago.usuario && <div className="mt-1 text-xs text-stone-500">Registrado por {r.pago.usuario}</div>} />
             </div>
           </>
         );

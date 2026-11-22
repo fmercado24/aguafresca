@@ -16,70 +16,87 @@ export function tasaAnualEquivalente(tasaMensualPct) {
   return (Math.pow(1 + tasaMensualPct / 100, 12) - 1) * 100;
 }
 
-/**
- * Tabla de amortización de cuota fija con interés sobre saldo insoluto.
- * La última cuota absorbe la diferencia de redondeo para que el saldo termine en $0.
- */
-export function tablaAmortizacion({ monto, tasaMensual, nCuotas, fechaPrimeraCuota }) {
-  const i = tasaMensual / 100;
-  const cuota = calcularCuota(monto, tasaMensual, nCuotas);
-  const filas = [];
-  let saldo = monto;
-  let totalIntereses = 0;
+/** Redondea hacia arriba a un valor "cerrado" de $1.000 (las cuotas nunca llevan pesos sueltos). */
+export const valorCerrado = (n) => Math.ceil(n / 1000) * 1000;
 
-  for (let k = 1; k <= nCuotas; k++) {
-    const interes = Math.round(saldo * i);
-    let amortizacion = cuota - interes;
-    if (k === nCuotas || amortizacion > saldo) amortizacion = saldo;
-    if (amortizacion < 0) amortizacion = 0;
-    saldo -= amortizacion;
-    totalIntereses += interes;
-    filas.push({
-      numero: k,
-      fecha: fechaPrimeraCuota ? sumarMeses(fechaPrimeraCuota, k - 1) : null,
-      cuota: amortizacion + interes,
-      interes,
-      amortizacion,
-      saldo,
-    });
-  }
-
-  return { cuota, filas, totalIntereses, totalPagar: monto + totalIntereses };
-}
-
-/**
- * Tabla a partir de un monto de cuota "cerrado" (por ejemplo $500.000): todas las cuotas son de ese monto
- * y la última es menor, por el saldo que queda. El número de cuotas resulta del cálculo.
- */
 export const MAXIMO_CUOTAS = 360;
 
-export function tablaPorCuota({ monto, tasaMensual, cuota, fechaPrimeraCuota }) {
+/**
+ * Recalcula interés y amortización de una serie de cuotas de monto conocido a partir de un saldo de capital:
+ * - Una cuota de monto 0 es una cuota APLAZADA: ese mes no se paga, se cobra solo el interés y este se suma
+ *   al capital (la cuota queda en $0 y la deuda aumenta).
+ * - En las demás, el interés del mes se calcula sobre el saldo y el resto de la cuota amortiza capital.
+ * - La cuota que alcanza a cubrir el saldo es la última y se cobra COMPLETA: lo que excede al saldo
+ *   se cuenta como interés. Las cuotas que vinieran después se descartan.
+ * - Si al terminar la serie todavía queda saldo, se agregan cuotas mensuales del último monto (`montoFinal`).
+ * Devuelve las filas { fecha, interes, amortizacion, saldo } y el saldo final (0 salvo que no alcance).
+ */
+export function cuotasDesde({ saldo, tasaMensual, cuotas, montoFinal = null, maximo = 600 }) {
   const i = tasaMensual / 100;
-  if (!(cuota > 0)) throw new ErrorApp('Indique el monto de la cuota');
-  if (cuota % 1000 !== 0) throw new ErrorApp('El monto de la cuota debe ser múltiplo de $1.000');
-  const interesInicial = Math.round(monto * i);
+  const filas = [];
+  let s = saldo;
+  const agregar = (fecha, monto) => {
+    const interes = Math.round(s * i);
+    if (monto === 0) {
+      filas.push({ fecha, interes, amortizacion: -interes, saldo: (s += interes) });
+      return;
+    }
+    if (s + interes <= monto) {
+      filas.push({ fecha, interes: monto - s, amortizacion: s, saldo: 0 });
+      s = 0;
+      return;
+    }
+    if (monto <= interes) throw new ErrorApp(`Una cuota de ${pesos(monto)} no alcanza a cubrir el interés del mes (${pesos(interes)})`);
+    filas.push({ fecha, interes, amortizacion: monto - interes, saldo: (s -= monto - interes) });
+  };
+  for (const c of cuotas) {
+    if (s <= 0) break;
+    agregar(c.fecha, c.monto);
+  }
+  const ultimoMonto = montoFinal ?? [...cuotas].reverse().find((c) => c.monto > 0)?.monto ?? 0;
+  // Las cuotas agregadas vencen el mismo día del mes que la última de la serie (sumar mes a mes correría el día: 31 → 28).
+  const ancla = filas.at(-1)?.fecha ?? null;
+  let agregadas = 0;
+  while (s > 0 && ultimoMonto > 0) {
+    if (filas.length >= maximo) throw new ErrorApp(`Con cuotas de ${pesos(ultimoMonto)} el crédito tendría más de ${maximo} cuotas: aumente la cuota`);
+    agregar(ancla ? sumarMeses(ancla, ++agregadas) : null, ultimoMonto);
+  }
+  return { filas, saldoFinal: s };
+}
+
+/** Cuotas mensuales iguales de un monto cerrado, desde la primera fecha; la última también es completa. */
+function tablaCuotaFija({ monto, tasaMensual, cuota, fechaPrimeraCuota }) {
+  const interesInicial = Math.round(monto * (tasaMensual / 100));
   if (cuota <= interesInicial) {
     throw new ErrorApp(`Una cuota de ${pesos(cuota)} no alcanza a cubrir el interés del primer mes (${pesos(interesInicial)}): aumente la cuota`);
   }
-  const filas = [];
-  let saldo = monto;
-  let totalIntereses = 0;
-  for (let k = 1; saldo > 0; k++) {
-    if (k > MAXIMO_CUOTAS) throw new ErrorApp(`Con una cuota de ${pesos(cuota)} el crédito tendría más de ${MAXIMO_CUOTAS} cuotas: aumente la cuota`);
-    const interes = Math.round(saldo * i);
-    const amortizacion = Math.min(saldo, cuota - interes);
-    saldo -= amortizacion;
-    totalIntereses += interes;
-    filas.push({
-      numero: k,
-      fecha: fechaPrimeraCuota ? sumarMeses(fechaPrimeraCuota, k - 1) : null,
-      cuota: amortizacion + interes,
-      interes,
-      amortizacion,
-      saldo,
-    });
-  }
-  return { cuota, filas, totalIntereses, totalPagar: monto + totalIntereses };
+  const { filas } = cuotasDesde({
+    saldo: monto, tasaMensual, montoFinal: cuota, maximo: MAXIMO_CUOTAS,
+    cuotas: [{ fecha: fechaPrimeraCuota || null, monto: cuota }],
+  });
+  if (!fechaPrimeraCuota) for (const f of filas) f.fecha = null;
+  const conNumero = filas.map((f, k) => ({ numero: k + 1, fecha: f.fecha, cuota: f.interes + f.amortizacion, interes: f.interes, amortizacion: f.amortizacion, saldo: f.saldo }));
+  const totalIntereses = conNumero.reduce((t, f) => t + f.interes, 0);
+  return { cuota, filas: conNumero, totalIntereses, totalPagar: monto + totalIntereses };
+}
+
+/**
+ * Tabla por número de cuotas: la cuota fija del sistema francés se redondea hacia arriba a $1.000
+ * (valor cerrado) y todas las cuotas, incluida la última, son de ese monto. Lo que la última cuota
+ * excede al saldo se cuenta como interés.
+ */
+export function tablaAmortizacion({ monto, tasaMensual, nCuotas, fechaPrimeraCuota }) {
+  return tablaCuotaFija({ monto, tasaMensual, cuota: valorCerrado(calcularCuota(monto, tasaMensual, nCuotas)), fechaPrimeraCuota });
+}
+
+/**
+ * Tabla a partir de un monto de cuota cerrado (por ejemplo $500.000): todas las cuotas son de ese monto,
+ * incluida la última. El número de cuotas resulta del cálculo.
+ */
+export function tablaPorCuota({ monto, tasaMensual, cuota, fechaPrimeraCuota }) {
+  if (!(cuota > 0)) throw new ErrorApp('Indique el monto de la cuota');
+  if (cuota % 1000 !== 0) throw new ErrorApp('El monto de la cuota debe ser múltiplo de $1.000');
+  return tablaCuotaFija({ monto, tasaMensual, cuota, fechaPrimeraCuota });
 }
 
 // ---------- Montos en palabras (para contratos) ----------

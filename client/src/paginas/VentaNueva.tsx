@@ -47,7 +47,8 @@ export function VentaNueva() {
   const parcela = parcelas.datos?.find((p) => p.id === parcelaId) ?? null;
   const { sim, error } = useSimulacion(precio, cond);
 
-  const pieSugerido = (monto: number) => Math.round((monto * config.credito.pie_porcentaje) / 100 / 100_000) * 100_000;
+  // Pie habitual en pesos (Configuración → Crédito y cobranza); si el precio es menor, el pie es el precio.
+  const pieSugerido = (monto: number) => Math.min(config.credito.pie_monto || 0, monto);
 
   // Al elegir la parcela se proponen su precio de lista y el pie habitual.
   function elegirParcela(id: number | null) {

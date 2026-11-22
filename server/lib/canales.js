@@ -30,7 +30,7 @@ export function canalesPublicos(c = leerCanales()) {
 
 export const correoListo = (c) => !!(c.correo.servidor && c.correo.puerto && c.correo.remitente);
 
-export async function enviarCorreo(c, { para, asunto, html, texto }) {
+export async function enviarCorreo(c, { para, asunto, html, texto, adjuntos = [] }) {
   const k = c.correo;
   const transporte = nodemailer.createTransport({
     host: k.servidor,
@@ -43,7 +43,9 @@ export async function enviarCorreo(c, { para, asunto, html, texto }) {
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
   });
-  const info = await transporte.sendMail({ from: k.remitente, to: para, replyTo: k.responder_a || undefined, subject: asunto, html, text: texto });
+  const info = await transporte.sendMail({
+    from: k.remitente, to: para, replyTo: k.responder_a || undefined, subject: asunto, html, text: texto, attachments: adjuntos,
+  });
   return info.messageId ?? '';
 }
 

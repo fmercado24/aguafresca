@@ -18,7 +18,7 @@ const ETIQUETAS = {
   contacto_rut: 'RUT del interesado', contacto_telefono: 'Celular del interesado', contacto_email: 'Correo del interesado',
   contacto_nombre: 'Nombre del interesado', rut_representante: 'RUT del representante', rol_sii: 'Rol de avalúo',
   superficie_m2: 'Superficie', n_cuotas: 'Número de cuotas', cuota_objetivo: 'Monto de la cuota', tasa_mensual: 'Interés mensual',
-  tasa_mora_mensual: 'Interés por mora', pie_porcentaje: 'Pie habitual', dias_validez_cotizacion: 'Vigencia de las cotizaciones',
+  tasa_mora_mensual: 'Interés por mora', pie_monto: 'Pie habitual', dias_validez_cotizacion: 'Vigencia de las cotizaciones',
   dias_plazo_carta: 'Plazo de las cartas', precio_lista: 'Precio de lista', fecha_primera_cuota: 'Vencimiento de la primera cuota',
   renta_mensual: 'Renta mensual', compromiso_monto: 'Monto comprometido', compromiso_fecha: 'Fecha del compromiso',
   responder_a: 'Responder a', nombre_completo: 'Nombre completo',

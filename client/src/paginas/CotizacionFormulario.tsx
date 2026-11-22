@@ -48,7 +48,8 @@ function Formulario({ id }: { id: number | null }) {
   const precio = precioLista ? Math.max(0, precioLista - (descuento ?? 0)) : null;
   const { sim, error } = useSimulacion(precio, cond);
   const parcela = parcelas.datos?.find((p) => p.id === parcelaId) ?? null;
-  const pieSugerido = (monto: number) => Math.round((monto * config.credito.pie_porcentaje) / 100 / 100_000) * 100_000;
+  // Pie habitual en pesos (Configuración → Crédito y cobranza); si el precio es menor, el pie es el precio.
+  const pieSugerido = (monto: number) => Math.min(config.credito.pie_monto || 0, monto);
 
   function elegirParcela(nuevaId: number | null) {
     setParcelaId(nuevaId);

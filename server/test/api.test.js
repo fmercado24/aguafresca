@@ -40,8 +40,9 @@ function cliente() {
     });
     const nueva = r.headers.get('set-cookie');
     if (nueva) cookie = nueva.split(';')[0];
-    const datos = await r.json().catch(() => null);
-    return { estado: r.status, datos };
+    const tipo = r.headers.get('content-type') ?? '';
+    const datos = tipo.includes('json') ? await r.json().catch(() => null) : await r.text();
+    return { estado: r.status, datos, tipo };
   };
 }
 
@@ -97,7 +98,7 @@ test('cuentas: son exactamente tres, cada una con sus permisos', async () => {
   assert.equal((await contador('PUT', '/config/empresa', empresa)).estado, 403);
   assert.equal((await contador('POST', '/parcelas', { numero: '99', superficie_m2: 5000, precio: 1 })).estado, 403);
   // Parámetros contables: contador y super administrador.
-  const credito = { credito: { tasa_mensual: 1, tasa_mora_mensual: 0, n_cuotas: 36, pie_porcentaje: 20, dias_validez_cotizacion: 15, dias_plazo_carta: 10 } };
+  const credito = { credito: { tasa_mensual: 1, tasa_mora_mensual: 0, n_cuotas: 36, pie_monto: 3_000_000, dias_validez_cotizacion: 15, dias_plazo_carta: 10 } };
   assert.equal((await abogado('PUT', '/config/credito', credito)).estado, 403);
   ok(await contador('PUT', '/config/credito', credito));
   // Plantillas: abogado y super administrador.
@@ -214,7 +215,7 @@ test('cobranza: atrasadas, pendientes, flujo futuro y panel', async () => {
     proyecto: { nombre: 'Fundo Entre Ríos', ubicacion: 'Los Ríos' },
   }));
   ok(await contador('PUT', '/config/credito', {
-    credito: { tasa_mensual: 1, tasa_mora_mensual: 1.5, n_cuotas: 36, pie_porcentaje: 20, dias_validez_cotizacion: 15, dias_plazo_carta: 10 },
+    credito: { tasa_mensual: 1, tasa_mora_mensual: 1.5, n_cuotas: 36, pie_monto: 3_000_000, dias_validez_cotizacion: 15, dias_plazo_carta: 10 },
   }));
 
   const venta = ok(await admin('GET', `/ventas/${ventaId}`));
@@ -452,7 +453,9 @@ test('pagos: el contador corrige un pago y el informe separa capital e interés'
   assert.equal(hist[0].motivo, 'Monto mal digitado');
 
   const pagos = ok(await admin('GET', `/cobranza/pagos?desde=${sumarMeses(HOY, -12)}&hasta=${HOY}`));
-  for (const p of pagos.filter((x) => !x.anulado)) assert.equal(p.capital + p.interes, p.monto, `pago ${p.id}`);
+  // Los pagos anulados y los de ventas anuladas no cuentan (capital e interés en cero).
+  for (const p of pagos.filter((x) => !x.anulado && !x.venta_anulada)) assert.equal(p.capital + p.interes, p.monto, `pago ${p.id}`);
+  for (const p of pagos.filter((x) => x.venta_anulada)) assert.equal(p.capital + p.interes, 0, `pago ${p.id} de una venta anulada`);
   const delPie = pagos.find((p) => p.venta_id === ventaId && p.monto === 5_000_000);
   assert.deepEqual([delPie.capital, delPie.interes], [5_000_000, 0], 'el pie es todo capital');
   const corregido = pagos.find((p) => p.id === pago.id);
@@ -623,16 +626,16 @@ test('dueños: precios (solo el contador), registro de los cambios de ambos y da
   assert.equal(ok(await contador('GET', '/config')).empresa.representante, 'Rosa Ríos Pérez', 'vuelve a usar el nombre escrito a mano');
 });
 
-test('cuotas por monto: todas del monto elegido (múltiplo de $1.000) y la última por el saldo', async () => {
+test('cuotas por monto: todas del monto elegido (múltiplo de $1.000), también la última', async () => {
   const s = ok(await contador('POST', '/simular', { precio: 30_000_000, pie: 6_000_000, cuota_objetivo: 500_000, tasa_mensual: 1, fecha_primera_cuota: sumarMeses(HOY, 1) }));
   const ultima = s.filas.at(-1);
-  assert.ok(s.filas.slice(0, -1).every((f) => f.cuota === 500_000), 'todas las cuotas, salvo la última, son de $500.000');
-  assert.ok(ultima.cuota > 0 && ultima.cuota <= 500_000);
+  assert.ok(s.filas.every((f) => f.cuota === 500_000), 'todas las cuotas son de $500.000, incluida la última');
   assert.equal(ultima.saldo, 0);
   assert.equal(s.n_cuotas, s.filas.length);
-  assert.deepEqual([s.valor_cuota, s.cuota_objetivo, s.ultima_cuota], [500_000, 500_000, ultima.cuota]);
+  assert.deepEqual([s.valor_cuota, s.cuota_objetivo, s.ultima_cuota], [500_000, 500_000, 500_000]);
   assert.equal(s.filas.reduce((t, f) => t + f.amortizacion, 0), 24_000_000);
-  assert.equal(s.n_cuotas, 66, '24 millones al 1 % mensual con cuotas de $500.000: 65 de $500.000 y una menor');
+  assert.equal(s.total_credito, 66 * 500_000, 'lo que la última cuota excede al saldo se cuenta como interés');
+  assert.equal(s.n_cuotas, 66, '24 millones al 1 % mensual con cuotas de $500.000');
   // Sin interés: 24.000.000 / 500.000 = 48 cuotas exactas.
   assert.equal(ok(await contador('POST', '/simular', { precio: 30_000_000, pie: 6_000_000, cuota_objetivo: 500_000, tasa_mensual: 0 })).n_cuotas, 48);
   assert.equal((await contador('POST', '/simular', { precio: 30_000_000, pie: 6_000_000, cuota_objetivo: 500_500, tasa_mensual: 1 })).estado, 400, 'solo múltiplos de $1.000');
@@ -652,7 +655,7 @@ test('cuotas por monto: todas del monto elegido (múltiplo de $1.000) y la últi
   }), 201).id;
   const venta = ok(await contador('GET', `/ventas/${v}`));
   assert.deepEqual([venta.venta.n_cuotas, venta.venta.valor_cuota, venta.venta.cuota_objetivo], [66, 500_000, 500_000]);
-  assert.equal(venta.cuotas.filter((c) => c.tipo === 'cuota' && c.monto === 500_000).length, 65);
+  assert.equal(venta.cuotas.filter((c) => c.tipo === 'cuota' && c.monto === 500_000).length, 66);
   ok(await contador('POST', `/ventas/${v}/anular`, { motivo: 'Venta de prueba de cuotas por monto' }));
 });
 
@@ -673,12 +676,14 @@ test('visitas: dicen quién las agendó, el abogado modifica solo las suyas y lo
   // Recordatorio de las visitas de las próximas 24 horas, para los dos dueños y una sola vez.
   const enUnRato = `${HOY}T23:59`;
   const pronto = ok(await contador('POST', '/visitas', { inicio: enUnRato, nombre: 'Visita de última hora' }), 201).id;
+  // (Si la prueba corre después de las 23:00 llega además el aviso de "en menos de una hora": no se cuenta aquí.)
+  const recordatorio = (a) => a.tipo === 'visita_recordatorio' && /Visita de última hora/.test(a.detalle) && !/menos de una hora/.test(a.titulo);
   for (const dueno of [abogado, contador]) {
-    const r = ok(await dueno('GET', '/avisos')).avisos.filter((a) => a.tipo === 'visita_recordatorio' && /Visita de última hora/.test(a.detalle));
+    const r = ok(await dueno('GET', '/avisos')).avisos.filter(recordatorio);
     assert.equal(r.length, 1);
     assert.match(r[0].titulo, /^Visita hoy a las 23:59$/);
   }
-  assert.equal(ok(await contador('GET', '/avisos')).avisos.filter((a) => a.tipo === 'visita_recordatorio' && /Visita de última hora/.test(a.detalle)).length, 1, 'no se repite');
+  assert.equal(ok(await contador('GET', '/avisos')).avisos.filter(recordatorio).length, 1, 'no se repite');
   // El abogado no puede cambiar ni borrar una visita que agendó otra persona; el contador sí.
   assert.equal((await abogado('PUT', `/visitas/${pronto}`, { inicio: enUnRato, nombre: 'X' })).estado, 403);
   assert.equal((await abogado('DELETE', `/visitas/${pronto}`)).estado, 403);
@@ -981,6 +986,135 @@ test('avisos push: llegan cifrados a los equipos suscritos, aunque no estén usa
   } finally {
     servicio.close();
   }
+});
+
+test('aplazar cuotas, comprobante con cuotas pendientes y recaudo del mes', async () => {
+  const parcela = ok(await admin('POST', '/parcelas', { numero: 'Z-1', sector: 'Manzana Z', superficie_m2: 5000, precio: 30_000_000 }), 201).id;
+  const v = ok(await contador('POST', '/ventas', {
+    parcela_id: parcela, cliente_id: clienteId, fecha: sumarMeses(HOY, -2), precio: 30_000_000, pie: 6_000_000, pie_pagado: true,
+    cuota_objetivo: 500_000, tasa_mensual: 1, fecha_primera_cuota: sumarMeses(HOY, -1), cuotas_pagadas: 1,
+  }), 201).id;
+  const d0 = ok(await contador('GET', `/ventas/${v}`));
+  assert.equal(d0.cuotas.at(-1).monto, 500_000, 'la última cuota es completa');
+
+  // Solo el contador o el super administrador; nunca una cuota ya pagada.
+  assert.equal((await abogado('POST', `/ventas/${v}/aplazar`, { desde: 2, meses: 1, simular: true })).estado, 403);
+  assert.equal((await contador('POST', `/ventas/${v}/aplazar`, { desde: 1, meses: 1, simular: true })).estado, 409);
+  const sim = ok(await contador('POST', `/ventas/${v}/aplazar`, { desde: 2, meses: 2, simular: true }));
+  assert.ok(sim.cuotas_despues >= sim.cuotas_antes + 2);
+  assert.ok(sim.interes_aplazado > 0);
+  assert.equal(ok(await contador('GET', `/ventas/${v}`)).cuotas.filter((c) => c.estado === 'aplazada').length, 0, 'simular no guarda');
+  assert.equal((await contador('POST', `/ventas/${v}/aplazar`, { desde: 2, meses: 2 })).estado, 400, 'motivo obligatorio');
+  ok(await contador('POST', `/ventas/${v}/aplazar`, { desde: 2, meses: 2, motivo: 'El cliente quedó sin trabajo' }));
+  const d = ok(await contador('GET', `/ventas/${v}`));
+  const aplazadas = d.cuotas.filter((c) => c.estado === 'aplazada');
+  assert.deepEqual(aplazadas.map((c) => c.numero), [2, 3]);
+  assert.ok(aplazadas.every((c) => c.monto === 0 && c.interes > 0 && c.amortizacion === -c.interes), 'cuota $0: solo se carga el interés');
+  assert.equal(aplazadas[1].saldo_insoluto, aplazadas[0].saldo_insoluto + aplazadas[1].interes, 'la deuda de capital aumenta');
+  assert.equal(d.cuotas.find((c) => c.numero === 4).fecha_vencimiento, sumarMeses(d0.cuotas.find((c) => c.numero === 2).fecha_vencimiento, 2));
+  assert.equal(d.cuotas.at(-1).monto, 500_000);
+  assert.equal(d.cuotas.at(-1).saldo_insoluto, 0);
+  assert.equal(d.totales.cuotas_aplazadas, 2);
+  assert.equal(d.totales.cuotas_total, d.cuotas.filter((c) => c.tipo === 'cuota').length - 2, 'las aplazadas no cuentan como cuotas a pagar');
+  assert.ok(!d.cuotas.some((c) => c.estado === 'atrasada' && c.monto === 0));
+  const hist = ok(await contador('GET', `/ventas/${v}/historial`));
+  assert.match(hist[0].detalle, /2 cuotas aplazadas desde la N° 2/);
+  assert.equal(hist[0].motivo, 'El cliente quedó sin trabajo');
+  // El editor aplaza sobre la tabla en pantalla (sin guardar) y una tabla con aplazadas se puede guardar.
+  const tabla = {
+    precio: d.venta.precio, pie: d.venta.pie, fecha_pie: d.cuotas[0].fecha_vencimiento, tasa_mensual: d.venta.tasa_mensual,
+    cuotas: d.cuotas.filter((c) => c.tipo === 'cuota').map((c) => ({ fecha_vencimiento: c.fecha_vencimiento, interes: c.interes, amortizacion: c.amortizacion })),
+  };
+  const enEditor = ok(await contador('POST', '/tabla/aplazar', { tabla, desde: 5, meses: 1 }));
+  assert.equal(enEditor.cuotas[4].interes + enEditor.cuotas[4].amortizacion, 0);
+  assert.equal(ok(await contador('GET', `/ventas/${v}`)).cuotas.filter((c) => c.estado === 'aplazada').length, 2);
+  ok(await contador('PUT', `/ventas/${v}/amortizacion`, { ...tabla, motivo: 'Guardar sin cambios' }));
+  assert.equal((await contador('PUT', `/ventas/${v}/amortizacion`, {
+    ...tabla, cuotas: tabla.cuotas.map((c, i) => (i === 5 ? { ...c, amortizacion: -1 } : c)), motivo: 'x',
+  })).estado, 400, 'amortización negativa solo en una cuota aplazada');
+  // Se puede deshacer.
+  ok(await contador('POST', `/ventas/${v}/amortizacion/restaurar/${hist[0].id}`));
+  assert.equal(ok(await contador('GET', `/ventas/${v}`)).cuotas.filter((c) => c.estado === 'aplazada').length, 0);
+
+  // Comprobante: cuántas cuotas quedan y de cuál a cuál (no la deuda de capital).
+  const recaudadoAntes = ok(await contador('GET', '/panel')).mes.recaudado;
+  const pago = ok(await contador('POST', `/ventas/${v}/pagos`, { fecha: HOY, monto: 500_000, medio: 'transferencia' }), 201).id;
+  const r = ok(await contador('GET', `/pagos/${pago}`));
+  const n = d0.cuotas.filter((c) => c.tipo === 'cuota').length;
+  assert.deepEqual([r.pendientes.n, r.pendientes.desde, r.pendientes.hasta], [n - 2, 3, n]);
+  assert.equal(r.saldo_venta, undefined);
+
+  // Recaudado del mes: cuenta el pago de hoy, pero no la carga inicial; al anular la venta (ingresada por error) deja de contar.
+  assert.equal(ok(await contador('GET', '/panel')).mes.recaudado, recaudadoAntes + 500_000);
+  ok(await contador('POST', `/ventas/${v}/anular`, { motivo: 'Venta de prueba ingresada por error' }));
+  assert.equal(ok(await contador('GET', '/panel')).mes.recaudado, recaudadoAntes);
+  const enLista = ok(await contador('GET', `/cobranza/pagos?desde=${HOY}&hasta=${HOY}`)).find((p) => p.id === pago);
+  assert.equal(enLista.venta_anulada, 1);
+});
+
+test('firma del representante legal, pie habitual en pesos y plano para Google Earth', async () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  assert.equal((await abogado('PUT', '/config/firma', { imagen: png })).estado, 403);
+  assert.equal((await admin('PUT', '/config/firma', { imagen: 'data:text/html;base64,PGI+' })).estado, 400);
+  ok(await admin('PUT', '/config/firma', { imagen: png }));
+  assert.ok(ok(await contador('GET', '/config')).firma.version > 0);
+  const img = await contador('GET', '/config/firma');
+  assert.equal(img.estado, 200);
+  assert.equal(img.tipo, 'image/png');
+  // Las cartas de cobranza llevan el pie de firma con la firma digital.
+  const plantilla = ok(await abogado('GET', '/plantillas')).find((p) => p.tipo === 'carta_cobranza');
+  const venta = ok(await contador('GET', '/ventas')).find((x) => x.estado === 'vigente');
+  const carta = ok(await abogado('POST', '/documentos/confeccionar', { plantilla_id: plantilla.id, venta_id: venta.id }));
+  assert.match(carta.contenido, /<img class="firma-digital" src="data:image\/png;base64,/);
+  assert.match(carta.contenido, /Representante legal/);
+  const doc = ok(await abogado('POST', '/documentos', { tipo: 'carta_cobranza', titulo: 'Carta', venta_id: venta.id, contenido: carta.contenido }), 201).id;
+  assert.match(ok(await abogado('GET', `/documentos/${doc}`)).contenido, /class="firma-digital"/, 'la firma queda en la carta guardada');
+  ok(await admin('DELETE', '/config/firma'));
+  assert.equal(ok(await contador('GET', '/config')).firma, null);
+
+  // Pie habitual en pesos.
+  const credito = ok(await contador('GET', '/config')).credito;
+  ok(await contador('PUT', '/config/credito', { credito: { ...credito, pie_monto: 5_000_000 } }));
+  assert.equal(ok(await contador('GET', '/config')).credito.pie_monto, 5_000_000);
+  assert.match(ok(await admin('GET', '/bitacora')).find((b) => b.accion === 'config_credito').detalle, /Pie habitual: \$3\.000\.000 → \$5\.000\.000/);
+
+  // Archivo KML para Google Earth, con cada parcela georreferenciada.
+  const kml = await abogado('GET', '/mapa/kml');
+  assert.equal(kml.estado, 200);
+  assert.match(kml.tipo, /kml/);
+  assert.match(kml.datos, /<Placemark><name>A-1<\/name>/);
+  assert.match(kml.datos, /<coordinates>-7\d\.\d+,-5\d\.\d+,0 /, 'longitud y latitud de Magallanes');
+});
+
+test('Google Earth: enlace de red a un KML público con clave y sin nombres de compradores', async () => {
+  const g = ok(await abogado('GET', '/mapa/google-earth'));
+  assert.equal(g.proyecto_url, '');
+  assert.ok(g.centro.lat < -53 && g.centro.lng < -70);
+  const m = /^http:\/\/127\.0\.0\.1:\d+\/earth\/([0-9a-f]{48})\/parcelas\.kml$/.exec(g.url_kml);
+  assert.ok(m, g.url_kml);
+  // El enlace de red apunta a esa dirección.
+  const enlace = await abogado('GET', '/mapa/google-earth/enlace.kml');
+  assert.match(enlace.datos, /<NetworkLink>/);
+  assert.ok(enlace.datos.includes(`<href>${g.url_kml}</href>`));
+  // Google Earth lo lee sin sesión ni cabeceras del sistema.
+  const publico = await fetch(g.url_kml);
+  assert.equal(publico.status, 200);
+  assert.equal(publico.headers.get('access-control-allow-origin'), '*');
+  const texto = await publico.text();
+  assert.match(texto, /<Placemark><name>A-1<\/name>/);
+  assert.doesNotMatch(texto, /Comprador/, 'sin nombres de compradores');
+  assert.match(ok(await abogado('GET', '/mapa/kml')).toString(), /Comprador: /, 'el archivo con sesión sí los trae');
+  assert.equal((await fetch(g.url_kml.replace(m[1], 'f'.repeat(48)))).status, 404);
+  // Vínculo del proyecto: lo guarda el contador o el administrador; solo vínculos de Google Earth.
+  assert.equal((await abogado('PUT', '/mapa/google-earth', { proyecto_url: 'https://earth.google.com/earth/d/abc' })).estado, 403);
+  assert.equal((await contador('PUT', '/mapa/google-earth', { proyecto_url: 'https://otro.sitio/x' })).estado, 400);
+  ok(await contador('PUT', '/mapa/google-earth', { proyecto_url: 'https://earth.google.com/earth/d/abc?usp=sharing' }));
+  assert.equal(ok(await abogado('GET', '/mapa/google-earth')).proyecto_url, 'https://earth.google.com/earth/d/abc?usp=sharing');
+  // Renovar la dirección anula la anterior.
+  const nueva = ok(await admin('POST', '/mapa/google-earth/renovar')).url_kml;
+  assert.notEqual(nueva, g.url_kml);
+  assert.equal((await fetch(g.url_kml)).status, 404);
+  assert.equal((await fetch(nueva)).status, 200);
 });
 
 test('cierre de sesión', async () => {

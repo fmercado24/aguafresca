@@ -7,6 +7,7 @@ import { pesos, montoEnPalabras, numeroEnPalabras } from './finanzas.js';
 import { formatearRut } from './rut.js';
 import { representanteDe, datosDeRol } from './datos-personales.js';
 import { ErrorApp } from './validar.js';
+import { bloqueFirmaHtml } from './firma.js';
 
 // Las plantillas son HTML simple con variables {{grupo.campo}} que se reemplazan
 // por los datos de la empresa, el cliente, la parcela, la venta y la deuda.
@@ -18,9 +19,14 @@ export const escapar = (s) =>
 export function limpiarHtml(html) {
   return sanitizeHtml(String(html ?? ''), {
     allowedTags: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'div', 'span',
-      'blockquote', 'hr', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td'],
-    allowedAttributes: { '*': ['style'], th: ['style', 'colspan', 'rowspan'], td: ['style', 'colspan', 'rowspan'] },
-    allowedClasses: { table: ['tabla-doc'], td: ['num'], th: ['num'], tr: ['total'], div: ['firmas', 'firma', 'salto-pagina'] },
+      'blockquote', 'hr', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'img'],
+    allowedAttributes: { '*': ['style'], th: ['style', 'colspan', 'rowspan'], td: ['style', 'colspan', 'rowspan'], img: ['src', 'alt'] },
+    allowedClasses: {
+      table: ['tabla-doc'], td: ['num'], th: ['num'], tr: ['total'], div: ['firmas', 'firma', 'salto-pagina', 'pie-firma'], img: ['firma-digital'],
+    },
+    // La única imagen permitida es la firma del representante, incrustada en el documento (PNG o JPG).
+    allowedSchemesByTag: { img: ['data'] },
+    exclusiveFilter: (f) => f.tag === 'img' && !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(f.attribs.src ?? ''),
     allowedStyles: {
       '*': {
         'text-align': [/^(left|right|center|justify)$/],
@@ -64,6 +70,7 @@ export const CATALOGO = [
     ['empresa.representante', 'Representante legal'],
     ['empresa.rut_representante', 'RUT del representante legal'],
     ['empresa.datos_bancarios', 'Datos para transferencia'],
+    ['firma', 'Pie de firma del representante legal, con su firma digital'],
   ] },
   { grupo: 'Representante legal (de sus datos personales si es uno de los dueños)', variables: variablesDePersona('representante') },
   { grupo: 'Abogado · ldiaz (sus datos personales)', variables: variablesDePersona('abogado') },
@@ -163,6 +170,7 @@ export function valoresPara(ventaId) {
   }
   poner('empresa.rut', formatearRut(cfg.empresa.rut));
   poner('empresa.rut_representante', formatearRut(cfg.empresa.rut_representante));
+  v.firma = bloqueFirmaHtml(cfg.empresa);
   for (const k of ['nombre', 'ubicacion', 'inscripcion']) poner(`proyecto.${k}`, cfg.proyecto[k]);
 
   // Representante legal y dueños: se completan solos con lo que cada dueño ingresó en "Mis datos personales".
@@ -209,7 +217,7 @@ export function valoresPara(ventaId) {
   v.tabla_amortizacion = soloCuotas.length
     ? tabla(
         ['N°', 'Vencimiento', 'Cuota', 'Interés', 'Amortización', 'Saldo'],
-        soloCuotas.map((c) => [c.numero, fechaCorta(c.fecha_vencimiento), pesos(c.monto), pesos(c.interes), pesos(c.amortizacion), pesos(c.saldo_insoluto)]),
+        soloCuotas.map((c) => [c.numero, fechaCorta(c.fecha_vencimiento), c.estado === 'aplazada' ? 'Aplazada' : pesos(c.monto), pesos(c.interes), pesos(c.amortizacion), pesos(c.saldo_insoluto)]),
         ['Total', '', pesos(soloCuotas.reduce((s, c) => s + c.monto, 0)), pesos(soloCuotas.reduce((s, c) => s + c.interes, 0)), pesos(venta.monto_financiado), ''],
       )
     : '<p>(Venta sin cuotas a crédito)</p>';

@@ -1,17 +1,19 @@
-import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
-  Calculator, CalendarPlus, Download, FileStack, HandCoins, ImageOff, ImageUp, Layers, Map as IconoMapa, MapPin, Pencil, PenLine, Plus, Save,
-  Trash2, Undo2, X,
+  Calculator, CalendarPlus, Download, FileStack, Globe, HandCoins, ImageOff, ImageUp, Layers, LocateFixed, Mail, Map as IconoMapa, MapPin, Pencil,
+  PenLine, Phone, Plus, Save, Settings2, Trash2, Undo2, UserRound, X,
 } from 'lucide-react';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
-import { COLOR_ESTADO, MapaParcelas, coordenadas, enlaceGoogleMaps } from '../componentes/MapaParcelas';
-import { descargarCsv, numero, pesos, plural, precioLista } from '../formato';
+import { COLOR_ESTADO, MapaParcelas, coordenadas, enlaceGoogleMaps, geoALienzo, parcelaEnPunto } from '../componentes/MapaParcelas';
+import { FormularioCliente } from '../componentes/FormularioCliente';
+import { compararParcela, descargarCsv, formatearRut, numero, pesos, plural, precioLista } from '../formato';
 import { ListaCambios, listarCambios } from '../componentes/Cambios';
-import type { EstadoParcela, Parcela, Plano, Punto, ResumenLoteo } from '../tipos';
+import type { EstadoParcela, FichaCliente, InfoGoogleEarth, Parcela, Plano, Punto, ResumenLoteo } from '../tipos';
 import {
-  AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, Entrada, EntradaMonto, ESTADOS_PARCELA, InsigniaParcela, Modal, Par, Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th, EntradaDecimal,
+  AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, Entrada, EntradaMonto, ESTADOS_PARCELA, InsigniaParcela, InsigniaVenta, Modal, Par,
+  Pestanas, Selector, SelectorOrden, Tabla, Tarjeta, Vacio, claseBoton, num, td, th, EntradaDecimal, useOrden,
 } from '../ui';
 
 const ESTADOS: EstadoParcela[] = ['disponible', 'reservada', 'vendida', 'bloqueada'];
@@ -221,16 +223,19 @@ function DetalleParcela({ p, alEditar, alCambiar, alCerrar }: { p: Parcela; alEd
       titulo={<span className="flex items-center gap-2">Parcela {p.numero} <InsigniaParcela estado={p.estado} /></span>}
       acciones={
         <>
-          {esAdmin && <Boton variante="fantasma" chico icono={Pencil} onClick={alEditar}>Editar</Boton>}
-          {!esAdmin && cambiaPrecio && <Boton variante="fantasma" chico icono={Pencil} onClick={() => setEnPrecio(true)}>Cambiar precio</Boton>}
+          {esAdmin && <Boton variante="fantasma" chico icono={Pencil} onClick={alEditar}>Editar parcela</Boton>}
           <button onClick={alCerrar} aria-label="Cerrar detalle" className="rounded-lg p-1.5 text-stone-500 hover:bg-stone-100"><X className="size-4" /></button>
         </>
       }
     >
-      <div className={`text-2xl font-semibold tracking-tight ${p.precio > 0 ? 'text-stone-900' : 'text-stone-400'}`}>{precioLista(p.precio)}</div>
-      {p.precio === 0 && cambiaPrecio && (
-        <p className="mt-1 text-xs text-stone-500">Fíjelo con “{esAdmin ? 'Editar' : 'Cambiar precio'}” o, para varias a la vez, con “Cambios en bloque” en la lista de precios.</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className={`text-2xl font-semibold tracking-tight ${p.precio > 0 ? 'text-stone-900' : 'text-stone-400'}`}>{precioLista(p.precio)}</div>
+        {cambiaPrecio && p.estado !== 'vendida' && <Boton chico variante="secundario" icono={Pencil} onClick={() => setEnPrecio(true)}>Cambiar precio</Boton>}
+      </div>
+      {p.precio === 0 && cambiaPrecio && p.estado !== 'vendida' && (
+        <p className="mt-1 text-xs text-stone-500">Fíjelo con “Cambiar precio” o, para varias a la vez, con “Cambios en bloque” en la lista de precios.</p>
       )}
+      {p.venta_id && p.cliente_id && <Propietario clienteId={p.cliente_id} ventaId={p.venta_id} alCambiar={alCambiar} />}
       <dl className="mt-3 grid grid-cols-2 gap-3">
         <Par etiqueta="Superficie">{numero(p.superficie_m2)} m²</Par>
         <Par etiqueta="Valor por m²">{p.superficie_m2 > 0 && p.precio > 0 ? pesos(p.precio / p.superficie_m2) : '—'}</Par>
@@ -249,11 +254,6 @@ function DetalleParcela({ p, alEditar, alCambiar, alCerrar }: { p: Parcela; alEd
           <p className="mt-1.5 whitespace-pre-line text-stone-600">{p.deslindes}</p>
         </details>
       )}
-      {p.venta_id && (
-        <p className="mt-3 text-sm text-stone-600">
-          Vendida a <Link to={`/clientes/${p.cliente_id}`} className="font-medium text-marca-700 hover:underline">{p.cliente}</Link>.
-        </p>
-      )}
       <div className="mt-4 flex flex-wrap gap-2">
         {enVenta && (
           <>
@@ -271,6 +271,201 @@ function DetalleParcela({ p, alEditar, alCambiar, alCerrar }: { p: Parcela; alEd
       </div>
       {enPrecio && <CambioPrecio p={p} alCerrar={() => setEnPrecio(false)} alGuardar={() => { setEnPrecio(false); alCambiar(); }} />}
     </Tarjeta>
+  );
+}
+
+/** Datos del propietario de una parcela vendida, con su situación de pago; se pueden editar ahí mismo. */
+function Propietario({ clienteId, ventaId, alCambiar }: { clienteId: number; ventaId: number; alCambiar: () => void }) {
+  const { puede } = useSesion();
+  const opera = puede('operaciones');
+  const completa = !opera && puede('clientes_esenciales');
+  const consulta = useDatos<FichaCliente>(`/clientes/${clienteId}`);
+  const [editando, setEditando] = useState(false);
+  const f = consulta.datos;
+  if (!f) return <p className="mt-3 text-sm text-stone-500">{consulta.error ?? 'Cargando datos del propietario…'}</p>;
+  const c = f.cliente;
+  const venta = f.ventas.find((v) => v.id === ventaId);
+  const direccion = [c.direccion, c.comuna, c.ciudad].filter(Boolean).join(', ');
+  return (
+    <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-stone-500"><UserRound className="size-3.5" />Propietario</div>
+          <Link to={`/clientes/${c.id}`} className="font-semibold text-stone-900 hover:text-marca-700 hover:underline">{c.nombre}</Link>
+          {c.rut && <div className="text-stone-600">RUT {formatearRut(c.rut)}</div>}
+        </div>
+        {(opera || completa) && (
+          <Boton chico variante="secundario" icono={Pencil} onClick={() => setEditando(true)}>{opera ? 'Editar datos' : 'Completar datos'}</Boton>
+        )}
+      </div>
+      <div className="mt-2 space-y-1 text-stone-700">
+        {c.telefono && <a href={`tel:${c.telefono.replace(/\s/g, '')}`} className="flex items-center gap-1.5 text-marca-700 hover:underline"><Phone className="size-3.5" />{c.telefono}</a>}
+        {c.email && <a href={`mailto:${c.email}`} className="flex items-center gap-1.5 break-all text-marca-700 hover:underline"><Mail className="size-3.5" />{c.email}</a>}
+        {direccion && <div className="flex items-start gap-1.5"><MapPin className="mt-0.5 size-3.5 shrink-0" />{direccion}</div>}
+        {!c.telefono && !c.email && !direccion && <div className="text-stone-500">Sin teléfono, correo ni dirección registrados.</div>}
+      </div>
+      {venta && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-stone-200 pt-2">
+          <InsigniaVenta estado={venta.estado} atrasadas={venta.totales.n_atrasadas} />
+          {venta.estado === 'vigente' && <span className="text-stone-600">Saldo por pagar {pesos(venta.totales.saldo)}</span>}
+        </div>
+      )}
+      {editando && (
+        <FormularioCliente
+          esencial={completa} cliente={c} alCerrar={() => setEditando(false)}
+          alGuardar={() => { setEditando(false); consulta.recargar(); alCambiar(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------- Mi ubicación (GPS del celular) ----------
+
+/** Sigue la posición del equipo y la lleva al plano georreferenciado. */
+function useMiUbicacion(plano: Plano | null) {
+  const [activo, setActivo] = useState(false);
+  const [pos, setPos] = useState<{ punto: Punto; radio: number; precision: number } | null>(null);
+  const [error, setError] = useState('');
+  const [clave, setClave] = useState(0);
+
+  useEffect(() => {
+    if (!activo) return;
+    if (!window.isSecureContext || !('geolocation' in navigator)) {
+      setError('La ubicación solo está disponible con el sistema publicado en internet (HTTPS) y en un equipo con GPS.');
+      setActivo(false);
+      return;
+    }
+    let primera = true;
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        const punto = geoALienzo(plano, p.coords.latitude, p.coords.longitude);
+        if (!punto) return;
+        setPos({ punto, radio: p.coords.accuracy / (plano?.metros_por_unidad || 1), precision: Math.round(p.coords.accuracy) });
+        setError('');
+        if (primera) { primera = false; setClave((k) => k + 1); }
+      },
+      (e) => {
+        setError(e.code === e.PERMISSION_DENIED
+          ? 'El navegador no tiene permiso para usar la ubicación. Actívelo en los ajustes del navegador y vuelva a intentar.'
+          : 'No se pudo obtener la ubicación. Intente de nuevo al aire libre.');
+        setActivo(false);
+        setPos(null);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 30_000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [activo, plano]);
+
+  return {
+    activo, pos, error, clave,
+    alternar: () => { setError(''); if (activo) setPos(null); setActivo(!activo); },
+  };
+}
+
+/** Google Earth en la posición del loteo (sin las parcelas: esas las trae el proyecto). */
+const earthEn = (c: { lat: number; lng: number } | null) =>
+  c ? `https://earth.google.com/web/@${c.lat.toFixed(6)},${c.lng.toFixed(6)},60a,2500d,35y,0h,0t,0r` : 'https://earth.google.com/web/';
+
+/**
+ * Google Earth: el proyecto que tiene importado el enlace de red trae las parcelas al día desde el sistema.
+ * Aquí se configura (una sola vez) y se descarga el archivo con los datos de hoy.
+ */
+function GoogleEarth({ info, alCerrar, alCambiar }: { info: InfoGoogleEarth | null; alCerrar: () => void; alCambiar: () => void }) {
+  const { puede } = useSesion();
+  const avisos = useAvisos();
+  const configura = puede('parcelas') || puede('precios');
+  const [vinculo, setVinculo] = useState(info?.proyecto_url ?? '');
+  const [ocupado, setOcupado] = useState(false);
+  const temporal = !!info && /trycloudflare\.com|localhost|127\.0\.0\.1/.test(info.url_kml);
+
+  async function guardar() {
+    setOcupado(true);
+    try {
+      await api.put('/mapa/google-earth', { proyecto_url: vinculo });
+      avisos.ok(vinculo ? 'Listo: el botón "Google Earth" abre ese proyecto' : 'Se quitó el proyecto de Google Earth');
+      alCambiar();
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function renovar() {
+    if (!(await avisos.confirmar({
+      titulo: '¿Renovar la dirección del plano?',
+      mensaje: 'Los enlaces ya importados en Google Earth dejan de funcionar (por ejemplo, si alguien que no debe tiene el archivo). Después hay que importar el enlace nuevo.',
+      confirmar: 'Renovar', peligro: true,
+    }))) return;
+    try {
+      await api.post('/mapa/google-earth/renovar', {});
+      avisos.ok('Dirección renovada: descargue el enlace nuevo e impórtelo en Google Earth');
+      alCambiar();
+    } catch (err) {
+      avisos.error(err);
+    }
+  }
+
+  const paso = (n: number, titulo: string, contenido: React.ReactNode) => (
+    <li className="flex gap-3">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-marca-600 text-xs font-semibold text-white">{n}</span>
+      <div className="min-w-0 flex-1"><div className="font-medium text-stone-900">{titulo}</div><div className="mt-0.5 space-y-2">{contenido}</div></div>
+    </li>
+  );
+
+  return (
+    <Modal abierto alCerrar={alCerrar} titulo="Ver las parcelas en Google Earth" pie={<Boton variante="secundario" onClick={alCerrar}>Cerrar</Boton>}>
+      <div className="space-y-5 text-sm text-stone-700">
+        {info?.proyecto_url && (
+          <a href={info.proyecto_url} target="_blank" rel="noopener noreferrer" className={`${claseBoton('primario')} w-full`}>
+            <Globe className="size-4" />Abrir el proyecto en Google Earth
+          </a>
+        )}
+        <div>
+          <div className="mb-2 font-semibold text-stone-900">{info?.proyecto_url ? 'Configuración (ya hecha)' : 'Configurar una sola vez'}</div>
+          <p className="mb-3">
+            Google Earth no se puede abrir directamente con un archivo: se importa una vez un <strong>enlace</strong> que apunta a este sistema y,
+            desde ahí, cada vez que se abre el proyecto trae las parcelas al día (número, estado y precio; sin nombres de compradores).
+          </p>
+          {configura ? (
+            <ol className="space-y-3">
+              {paso(1, 'Descargue el enlace', <a href="/api/mapa/google-earth/enlace.kml" download className={claseBoton('secundario', true)}><Download className="size-3.5" />Descargar enlace para Google Earth</a>)}
+              {paso(2, 'Impórtelo en Google Earth', (
+                <>
+                  <p>En Google Earth (en el computador) elija <strong>Nuevo → Importar archivo → Subir desde el dispositivo</strong>, elija el archivo descargado e importe como elementos del mapa.</p>
+                  <a href={earthEn(info?.centro ?? null)} target="_blank" rel="noopener noreferrer" className={claseBoton('secundario', true)}><Globe className="size-3.5" />Abrir Google Earth</a>
+                </>
+              ))}
+              {paso(3, 'Pegue aquí el vínculo del proyecto', (
+                <>
+                  <p>En Google Earth use <strong>Compartir → Copiar vínculo</strong> del proyecto (si lo usarán otras cuentas de Google, compártalo con ellas).</p>
+                  <div className="flex gap-2">
+                    <Entrada value={vinculo} onChange={(e) => setVinculo(e.target.value)} placeholder="https://earth.google.com/earth/d/…" />
+                    <Boton cargando={ocupado} disabled={vinculo.trim() === (info?.proyecto_url ?? '')} onClick={guardar}>Guardar</Boton>
+                  </div>
+                  <p className="text-xs text-stone-500">Después, el botón “Google Earth” del mapa abre ese proyecto en una pestaña nueva.</p>
+                </>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-stone-600">Lo configura el contador o el super administrador.</p>
+          )}
+          {temporal && (
+            <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-950">
+              El sistema usa una dirección temporal de Cloudflare: cuando el servidor se reinicia, la dirección cambia y el enlace importado deja de
+              actualizarse. En ese caso repita los pasos 1 y 2. Con un dominio propio esto no pasa.
+            </p>
+          )}
+          {configura && <button type="button" onClick={renovar} className="mt-2 text-xs text-stone-500 underline hover:text-stone-800">Renovar la dirección (anula los enlaces anteriores)</button>}
+        </div>
+        <div className="border-t border-stone-200 pt-4">
+          <div className="mb-1 font-semibold text-stone-900">Archivo con los datos de hoy</div>
+          <p className="mb-2">Una copia fija (incluye los compradores) para importar o enviar. No se actualiza sola.</p>
+          <a href="/api/mapa/kml" download className={claseBoton('secundario', true)}><Download className="size-3.5" />Descargar archivo</a>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -572,6 +767,12 @@ function CambiosEnBloque({ parcelas, alCerrar, alGuardar }: { parcelas: Parcela[
 
 // ---------- Página ----------
 
+const ORDEN_PARCELAS = [
+  { id: 'parcela', etiqueta: 'Parcela (manzana y número)', comparar: (a: Parcela, b: Parcela) => compararParcela(a.numero, b.numero) },
+  { id: 'precio', etiqueta: 'Precio, de menor a mayor', comparar: (a: Parcela, b: Parcela) => (a.precio || Infinity) - (b.precio || Infinity) || compararParcela(a.numero, b.numero) },
+  { id: 'superficie', etiqueta: 'Superficie, de menor a mayor', comparar: (a: Parcela, b: Parcela) => a.superficie_m2 - b.superficie_m2 || compararParcela(a.numero, b.numero) },
+] as const;
+
 export function Parcelas() {
   const { puede } = useSesion();
   const esAdmin = puede('parcelas');
@@ -592,8 +793,20 @@ export function Parcelas() {
   const [editando, setEditando] = useState<Borrador | null>(null);
   const [edicionMapa, setEdicionMapa] = useState(false);
   const [trazo, setTrazo] = useState<Punto[] | null>(null);
+  const [orden, setOrden] = useOrden('parcelas', ORDEN_PARCELAS.map((o) => o.id), 'parcela');
+  const [verEarth, setVerEarth] = useState(false);
+  const georreferenciado = !!config.plano?.georreferencia;
+  const ubicacion = useMiUbicacion(config.plano);
+  const earth = useDatos<InfoGoogleEarth>(georreferenciado ? '/mapa/google-earth' : null);
+  // Imagen satelital de fondo: se recuerda en cada equipo.
+  const [satelite, setSateliteEstado] = useState(() => localStorage.getItem('mapa:satelite') === '1');
+  const setSatelite = (v: boolean) => { setSateliteEstado(v); localStorage.setItem('mapa:satelite', v ? '1' : '0'); };
 
   const parcelas = consulta.datos ?? [];
+  // Dónde está quien mira el mapa: la parcela que pisa o, si está fuera del loteo, la más cercana.
+  const dondeEstoy = useMemo(() => (ubicacion.pos ? parcelaEnPunto(parcelas, ubicacion.pos.punto) : null), [parcelas, ubicacion.pos]);
+  const parcelaAqui = dondeEstoy?.dentro ? dondeEstoy.parcela.id : null;
+  useEffect(() => { if (parcelaAqui !== null) setSeleccion(parcelaAqui); }, [parcelaAqui]);
   const elegida = parcelas.find((p) => p.id === seleccion) ?? null;
   const cuenta = useMemo(() => {
     const c: Record<EstadoParcela, number> = { disponible: 0, reservada: 0, vendida: 0, bloqueada: 0 };
@@ -605,8 +818,9 @@ export function Parcelas() {
     const q = busqueda.trim().toLowerCase();
     return parcelas.filter((p) =>
       (!filtro || p.estado === filtro) && (sector === null || p.sector === sector) &&
-      (!q || p.numero.toLowerCase().includes(q) || p.sector.toLowerCase().includes(q) || (p.cliente ?? '').toLowerCase().includes(q)));
-  }, [parcelas, filtro, sector, busqueda]);
+      (!q || p.numero.toLowerCase().includes(q) || p.sector.toLowerCase().includes(q) || (p.cliente ?? '').toLowerCase().includes(q)))
+      .sort(ORDEN_PARCELAS.find((o) => o.id === orden)!.comparar);
+  }, [parcelas, filtro, sector, busqueda, orden]);
   const sectores = useMemo(() => [...new Set(parcelas.map((p) => p.sector))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })), [parcelas]);
 
   const sinContorno = parcelas.filter((p) => !p.poligono);
@@ -685,12 +899,45 @@ export function Parcelas() {
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 {filtros}
-                {esAdmin && (
-                  <Boton chico variante={edicionMapa ? 'primario' : 'secundario'} icono={PenLine} onClick={() => { setEdicionMapa(!edicionMapa); setTrazo(null); }}>
-                    {edicionMapa ? 'Terminar edición' : 'Editar mapa'}
-                  </Boton>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {georreferenciado && (
+                    <Boton chico variante={ubicacion.activo ? 'primario' : 'secundario'} icono={LocateFixed} onClick={ubicacion.alternar}>
+                      {ubicacion.activo ? 'Dejar de seguir mi ubicación' : '¿En qué parcela estoy?'}
+                    </Boton>
+                  )}
+                  {georreferenciado && (
+                    <div className="flex">
+                      <Boton
+                        chico variante="secundario" icono={Globe} className={earth.datos?.proyecto_url ? 'rounded-r-none' : ''}
+                        onClick={() => (earth.datos?.proyecto_url ? window.open(earth.datos.proyecto_url, '_blank', 'noopener') : setVerEarth(true))}
+                      >
+                        Google Earth
+                      </Boton>
+                      {earth.datos?.proyecto_url && (
+                        <Boton chico variante="secundario" icono={Settings2} aria-label="Opciones de Google Earth" title="Opciones de Google Earth" className="-ml-px rounded-l-none" onClick={() => setVerEarth(true)} />
+                      )}
+                    </div>
+                  )}
+                  {esAdmin && (
+                    <Boton chico variante={edicionMapa ? 'primario' : 'secundario'} icono={PenLine} onClick={() => { setEdicionMapa(!edicionMapa); setTrazo(null); }}>
+                      {edicionMapa ? 'Terminar edición' : 'Editar mapa'}
+                    </Boton>
+                  )}
+                </div>
               </div>
+
+              {(ubicacion.activo || ubicacion.error) && (
+                <p role="status" className={`mb-3 flex items-start gap-2 rounded-xl border px-4 py-2.5 text-sm ${ubicacion.error ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-blue-200 bg-blue-50 text-blue-950'}`}>
+                  <LocateFixed className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    {ubicacion.error || (!ubicacion.pos ? 'Buscando su ubicación… (el celular puede pedir permiso para usarla)' : dondeEstoy?.dentro ? (
+                      <>Usted está en la <strong>parcela {dondeEstoy.parcela.numero}</strong>{dondeEstoy.parcela.sector ? ` (${dondeEstoy.parcela.sector})` : ''}. Precisión del GPS: ± {ubicacion.pos.precision} m.</>
+                    ) : dondeEstoy ? (
+                      <>Está fuera de las parcelas: la más cercana es la <strong>{dondeEstoy.parcela.numero}</strong>, a unos {Math.round(dondeEstoy.distancia * (config.plano?.metros_por_unidad ?? 1))} m. Precisión del GPS: ± {ubicacion.pos.precision} m.</>
+                    ) : 'Ubicación encontrada.')}
+                  </span>
+                </p>
+              )}
 
               {edicionMapa && (
                 <EdicionMapa
@@ -709,6 +956,12 @@ export function Parcelas() {
                     atenuar={filtro || sector !== null ? (p) => (!!filtro && p.estado !== filtro) || (sector !== null && p.sector !== sector) : undefined}
                     trazo={trazo}
                     alAgregarPunto={trazo ? (p) => setTrazo([...trazo, p]) : undefined}
+                    ubicacion={ubicacion.pos}
+                    enfocar={ubicacion.pos && ubicacion.clave ? { punto: ubicacion.pos.punto, clave: ubicacion.clave } : null}
+                    alUbicarme={georreferenciado && !trazo ? ubicacion.alternar : undefined}
+                    ubicando={ubicacion.activo}
+                    satelite={satelite && !edicionMapa}
+                    alCambiarSatelite={edicionMapa ? undefined : setSatelite}
                   />
                   {sinContorno.length > 0 && (
                     <p className="mt-2 text-xs text-stone-500">
@@ -731,6 +984,7 @@ export function Parcelas() {
               <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 p-3">
                 <Buscador valor={busqueda} alCambiar={setBusqueda} placeholder="Buscar por número, manzana o comprador" className="min-w-56 flex-1" />
                 {filtros}
+                <SelectorOrden valor={orden} alCambiar={setOrden} opciones={ORDEN_PARCELAS.map(({ id, etiqueta }) => ({ id, etiqueta }))} />
                 {puedePrecios && filtradas.length > 0 && <Boton chico variante="secundario" icono={FileStack} onClick={() => setEnBloque(true)}>Cambios en bloque</Boton>}
                 <Boton chico variante="secundario" icono={Download} onClick={exportar}>Excel</Boton>
               </div>
@@ -787,6 +1041,8 @@ export function Parcelas() {
           )
         }
       </Carga>
+
+      {verEarth && <GoogleEarth info={earth.datos} alCerrar={() => setVerEarth(false)} alCambiar={earth.recargar} />}
 
       {precioDe && <CambioPrecio p={precioDe} alCerrar={() => setPrecioDe(null)} alGuardar={() => { setPrecioDe(null); consulta.recargar(); }} />}
 

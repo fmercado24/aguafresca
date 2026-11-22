@@ -26,7 +26,8 @@ export const VALORES_INICIALES = {
     tasa_mensual: 1,
     tasa_mora_mensual: 0,
     n_cuotas: 36,
-    pie_porcentaje: 20,
+    // Pie habitual en pesos (se propone al cotizar y al vender; si el precio es menor, el pie es el precio).
+    pie_monto: 3_000_000,
     dias_validez_cotizacion: 15,
     dias_plazo_carta: 10,
   },
@@ -56,5 +57,7 @@ export function leerConfiguracion() {
     proyecto: leerSeccion('proyecto'),
     credito: leerSeccion('credito'),
     plano: leerSeccion('plano'),
+    // Solo si hay firma cargada: la versión sirve para que el navegador no muestre una imagen anterior.
+    firma: leerSeccion('firma')?.archivo ? { version: leerSeccion('firma').version } : null,
   };
 }

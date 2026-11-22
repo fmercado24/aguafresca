@@ -116,11 +116,14 @@ export interface Config {
     tasa_mensual: number;
     tasa_mora_mensual: number;
     n_cuotas: number;
-    pie_porcentaje: number;
+    /** Pie habitual en pesos (se propone al cotizar y al vender). */
+    pie_monto: number;
     dias_validez_cotizacion: number;
     dias_plazo_carta: number;
   };
   plano: Plano | null;
+  /** Firma del representante legal (imagen), si está cargada. */
+  firma: { version: number } | null;
   hoy: string;
   medios_pago: string[];
 }
@@ -186,7 +189,8 @@ export interface ClienteResumen {
   n_atrasadas: number;
 }
 
-export type EstadoCuota = 'pagada' | 'atrasada' | 'parcial' | 'pendiente';
+/** aplazada: ese mes no se paga (cuota $0); el interés se suma a la deuda de capital. */
+export type EstadoCuota = 'pagada' | 'atrasada' | 'parcial' | 'pendiente' | 'aplazada';
 
 export interface Cuota {
   id: number;
@@ -243,6 +247,10 @@ export interface Totales {
   dias_atraso: number;
   cuotas_total: number;
   cuotas_pagadas: number;
+  cuotas_aplazadas: number;
+  cuotas_pendientes: number;
+  pendiente_desde: number | null;
+  pendiente_hasta: number | null;
   proxima: { numero: number; tipo: 'pie' | 'cuota'; fecha: string; saldo: number; estado: EstadoCuota } | null;
 }
 
@@ -290,6 +298,8 @@ export interface VentaResumen {
   atrasado: number;
   n_atrasadas: number;
   cuotas_pagadas: number;
+  /** Cuotas por pagar (sin contar las aplazadas). */
+  cuotas_a_pagar: number;
   proximo_vencimiento: string | null;
 }
 
@@ -411,6 +421,8 @@ export interface PagoRecibido {
   comprobante: string;
   observacion: string;
   anulado: number;
+  /** El pago es de una venta anulada: no cuenta como recibido. */
+  venta_anulada: number;
   cliente_id: number;
   cliente: string;
   parcela: string;
@@ -660,5 +672,28 @@ export interface Recibo {
   cliente: { id: number; nombre: string; rut: string; direccion: string; comuna: string };
   parcela: { id: number; numero: string };
   imputaciones: { numero: number; tipo: 'pie' | 'cuota'; fecha_vencimiento: string; monto_cuota: number; monto: number }[];
-  saldo_venta: number;
+  /** Cuotas por pagar a la fecha de emisión. */
+  pendientes: { n: number; desde: number | null; hasta: number | null; saldo_primera: number | null; pie_pendiente: number; aplazadas: number };
+}
+
+/** Resultado de aplazar cuotas (simulado o aplicado). */
+export interface Aplazamiento {
+  desde: number;
+  meses: number;
+  cuotas_antes: number;
+  cuotas_despues: number;
+  ultima_antes: string | null;
+  ultima_despues: string | null;
+  interes_aplazado: number;
+  capital_despues: number;
+  total_antes: number;
+  total_despues: number;
+  cuotas: { fecha_vencimiento: string; interes: number; amortizacion: number }[];
+}
+
+/** Plano en Google Earth: proyecto configurado y dirección pública del KML (enlace de red). */
+export interface InfoGoogleEarth {
+  proyecto_url: string;
+  url_kml: string;
+  centro: { lat: number; lng: number } | null;
 }

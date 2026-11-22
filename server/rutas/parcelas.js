@@ -3,11 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, insertar, actualizar } from '../db.js';
 import { config } from '../config.js';
-import { requiere, exigir } from '../auth.js';
+import { requiere, exigir, puede } from '../auth.js';
 import { registrar, diferencias, describirCambios } from '../lib/bitacora.js';
 import { pesos } from '../lib/finanzas.js';
 import { leerSeccion, guardarSeccion } from '../lib/configuracion.js';
 import { resumenLoteo, importarLoteo } from '../lib/loteo.js';
+import {
+  kmlParcelas, kmlEnlace, nombreArchivo, claveEarth, renovarClaveEarth, proyectoEarth, guardarProyectoEarth, centroLoteo,
+} from '../lib/google-earth.js';
 import { ErrorApp, leer, texto, entero, decimal, opcion, idDe, rolSii } from '../lib/validar.js';
 
 export const rutasParcelas = Router();
@@ -205,6 +208,62 @@ function borrarPlanoActual() {
   const plano = leerSeccion('plano');
   if (plano?.archivo) fs.rmSync(path.join(config.dirDatos, path.basename(plano.archivo)), { force: true });
 }
+
+// ---------- Google Earth ----------
+
+// Archivo KML con el contorno, código, estado, superficie y precio o comprador de cada parcela (datos de hoy).
+rutasParcelas.get('/mapa/kml', (req, res) => {
+  const kml = kmlParcelas({ conCompradores: true });
+  res.set('Content-Type', 'application/vnd.google-earth.kml+xml; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="${nombreArchivo('parcelas')}.kml"`);
+  res.send(kml);
+});
+
+// Dirección pública del KML (la que lee Google Earth). Se arma con la dirección por la que se entró al sistema.
+// Detrás de Cloudflare la conexión al sistema es local (http): el esquema real viene en la cabecera CF-Visitor.
+function esquemaDe(req) {
+  try {
+    const v = JSON.parse(req.get('cf-visitor') || '{}');
+    if (v.scheme === 'https' || v.scheme === 'http') return v.scheme;
+  } catch { /* cabecera inválida: se usa la conexión */ }
+  return req.protocol;
+}
+const urlPublica = (req) => `${esquemaDe(req)}://${req.get('host')}/earth/${claveEarth()}/parcelas.kml`;
+
+rutasParcelas.get('/mapa/google-earth', (req, res) => {
+  const centro = centroLoteo();
+  res.json({ proyecto_url: proyectoEarth(), url_kml: urlPublica(req), centro });
+});
+
+// Enlace de red: se importa una sola vez en un proyecto de Google Earth.
+rutasParcelas.get('/mapa/google-earth/enlace.kml', (req, res) => {
+  const kml = kmlEnlace(urlPublica(req));
+  res.set('Content-Type', 'application/vnd.google-earth.kml+xml; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="${nombreArchivo('enlace-google-earth')}.kml"`);
+  res.send(kml);
+});
+
+// Lo configuran el contador o el super administrador (quienes manejan los precios y el mapa).
+const exigirMapa = (usuario) => { if (!puede(usuario, 'parcelas')) exigir(usuario, 'precios'); };
+
+rutasParcelas.put('/mapa/google-earth', (req, res) => {
+  exigirMapa(req.usuario);
+  const { proyecto_url } = leer(req.body, { proyecto_url: texto({ max: 500 }) });
+  db.tx(() => {
+    guardarProyectoEarth(proyecto_url);
+    registrar(req.usuario.id, { accion: 'google_earth', entidad: 'config', detalle: proyecto_url ? `Proyecto de Google Earth: ${proyecto_url}` : 'Se quitó el proyecto de Google Earth' });
+  });
+  res.json({ ok: true });
+});
+
+rutasParcelas.post('/mapa/google-earth/renovar', (req, res) => {
+  exigirMapa(req.usuario);
+  db.tx(() => {
+    renovarClaveEarth();
+    registrar(req.usuario.id, { accion: 'google_earth', entidad: 'config', detalle: 'Dirección del plano para Google Earth renovada: los enlaces anteriores dejan de funcionar' });
+  });
+  res.json({ ok: true, url_kml: urlPublica(req) });
+});
 
 rutasParcelas.get('/mapa/plano', (req, res) => {
   const plano = leerSeccion('plano');

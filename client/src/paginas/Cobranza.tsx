@@ -6,10 +6,11 @@ import { useConfig, useSesion } from '../contexto';
 import { FormularioGestion, TIPOS_GESTION } from '../componentes/FormularioGestion';
 import { GraficoFlujo } from '../componentes/GraficoFlujo';
 import { VistaEnvios } from './EnvioCartas';
-import { MEDIOS_PAGO, descargarCsv, fecha, formatearRut, mesLargo, pesos, plural, porcentaje } from '../formato';
+import { MEDIOS_PAGO, compararParcela, descargarCsv, fecha, formatearRut, mesLargo, pesos, plural, porcentaje } from '../formato';
 import type { Atrasadas, CuotaConContexto, Deudor, Flujo, PagoRecibido } from '../tipos';
 import {
-  Boton, Campo, Carga, Dato, Encabezado, EnlaceBoton, Entrada, InsigniaCuota, Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th,
+  Boton, Campo, Carga, Dato, Encabezado, EnlaceBoton, Entrada, InsigniaCuota, Pestanas, Selector, SelectorOrden, Tabla, Tarjeta, Vacio, num, td, th,
+  useOrden,
 } from '../ui';
 
 type Vista = 'atrasadas' | 'pendientes' | 'flujo' | 'pagos' | 'envios';
@@ -45,10 +46,18 @@ export function Cobranza() {
 
 // ---------- Cuotas atrasadas, por deudor ----------
 
+const ORDEN_DEUDORES = [
+  { id: 'atraso', etiqueta: 'Más días de atraso', comparar: (a: Deudor, b: Deudor) => b.dias_atraso - a.dias_atraso || compararParcela(a.parcela, b.parcela) },
+  { id: 'parcela', etiqueta: 'Parcela (manzana y número)', comparar: (a: Deudor, b: Deudor) => compararParcela(a.parcela, b.parcela) },
+  { id: 'monto', etiqueta: 'Mayor monto atrasado', comparar: (a: Deudor, b: Deudor) => b.monto - a.monto || compararParcela(a.parcela, b.parcela) },
+] as const;
+
 function VistaAtrasadas() {
   const opera = useSesion().puede('operaciones');
   const consulta = useDatos<Atrasadas>('/cobranza/atrasadas');
   const [gestion, setGestion] = useState<Deudor | null>(null);
+  const [orden, setOrden] = useOrden('cobranza-deudores', ORDEN_DEUDORES.map((o) => o.id), 'atraso');
+  const ordenar = (ds: Deudor[]) => [...ds].sort(ORDEN_DEUDORES.find((o) => o.id === orden)!.comparar);
 
   return (
     <Carga consulta={consulta}>
@@ -65,7 +74,10 @@ function VistaAtrasadas() {
                 detalle={a.tasa_mora_mensual > 0 ? `${porcentaje(a.tasa_mora_mensual)} mensual, a hoy` : 'Sin tasa de mora configurada'}
               />
               <Dato etiqueta="Deudores con atraso" valor={a.total.n_deudores} />
-              <Dato etiqueta="Mayor atraso" valor={`${a.deudores[0].dias_atraso} días`} detalle={a.deudores[0].cliente} />
+              {(() => {
+                const mayor = a.deudores.reduce((m, d) => (d.dias_atraso > m.dias_atraso ? d : m));
+                return <Dato etiqueta="Mayor atraso" valor={`${mayor.dias_atraso} días`} detalle={mayor.cliente} />;
+              })()}
             </div>
 
             <Tarjeta titulo="Antigüedad de la deuda atrasada">
@@ -76,14 +88,17 @@ function VistaAtrasadas() {
               titulo="Deudores"
               relleno={false}
               acciones={
-                <Boton
-                  chico variante="secundario" icono={Download}
-                  onClick={() => descargarCsv('cuotas-atrasadas.csv',
-                    ['Cliente', 'RUT', 'Teléfono', 'Correo', 'Parcela', 'Cuota', 'Vencimiento', 'Días de atraso', 'Saldo', 'Mora estimada'],
-                    a.deudores.flatMap((d) => d.cuotas.map((c) => [d.cliente, formatearRut(d.rut), d.telefono, d.email, d.parcela, nombreCuota(c), c.fecha_vencimiento, c.dias_atraso, c.saldo, c.mora_estimada])))}
-                >
-                  Excel
-                </Boton>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SelectorOrden valor={orden} alCambiar={setOrden} opciones={ORDEN_DEUDORES.map(({ id, etiqueta }) => ({ id, etiqueta }))} />
+                  <Boton
+                    chico variante="secundario" icono={Download}
+                    onClick={() => descargarCsv('cuotas-atrasadas.csv',
+                      ['Cliente', 'RUT', 'Teléfono', 'Correo', 'Parcela', 'Cuota', 'Vencimiento', 'Días de atraso', 'Saldo', 'Mora estimada'],
+                      ordenar(a.deudores).flatMap((d) => d.cuotas.map((c) => [d.cliente, formatearRut(d.rut), d.telefono, d.email, d.parcela, nombreCuota(c), c.fecha_vencimiento, c.dias_atraso, c.saldo, c.mora_estimada])))}
+                  >
+                    Excel
+                  </Boton>
+                </div>
               }
             >
               <Tabla>
@@ -99,7 +114,7 @@ function VistaAtrasadas() {
                   </tr>
                 </thead>
                 <tbody>
-                  {a.deudores.map((d) => (
+                  {ordenar(a.deudores).map((d) => (
                     <tr key={d.venta_id} className="align-top">
                       <td className={td}>
                         <Link to={`/clientes/${d.cliente_id}`} className="font-medium text-stone-900 hover:text-marca-700 hover:underline">{d.cliente}</Link>
@@ -172,15 +187,23 @@ function Antiguedad({ tramos }: { tramos: Atrasadas['tramos'] }) {
 
 // ---------- Cuotas pendientes (por vencer y atrasadas) ----------
 
+const ORDEN_CUOTAS = [
+  { id: 'vencimiento', etiqueta: 'Vencimiento', comparar: (a: CuotaConContexto, b: CuotaConContexto) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento) || compararParcela(a.parcela, b.parcela) },
+  { id: 'parcela', etiqueta: 'Parcela (manzana y número)', comparar: (a: CuotaConContexto, b: CuotaConContexto) => compararParcela(a.parcela, b.parcela) || a.numero - b.numero },
+] as const;
+
 function VistaPendientes() {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [estado, setEstado] = useState<'todas' | 'por_vencer' | 'atrasadas'>('todas');
+  const [orden, setOrden] = useOrden('cobranza-cuotas', ORDEN_CUOTAS.map((o) => o.id), 'vencimiento');
   const consulta = useDatos<CuotaConContexto[]>(`/cobranza/pendientes?desde=${desde}&hasta=${hasta}`);
 
   const filtradas = useMemo(
-    () => (consulta.datos ?? []).filter((c) => estado === 'todas' || (estado === 'atrasadas' ? c.estado === 'atrasada' : c.estado !== 'atrasada')),
-    [consulta.datos, estado],
+    () => (consulta.datos ?? [])
+      .filter((c) => estado === 'todas' || (estado === 'atrasadas' ? c.estado === 'atrasada' : c.estado !== 'atrasada'))
+      .sort(ORDEN_CUOTAS.find((o) => o.id === orden)!.comparar),
+    [consulta.datos, estado, orden],
   );
   const total = filtradas.reduce((s, c) => s + c.saldo, 0);
 
@@ -194,6 +217,11 @@ function VistaPendientes() {
             <option value="todas">Todas</option>
             <option value="por_vencer">Por vencer</option>
             <option value="atrasadas">Atrasadas</option>
+          </Selector>
+        </Campo>
+        <Campo etiqueta="Ordenar por">
+          <Selector value={orden} onChange={(e) => setOrden(e.target.value as typeof orden)}>
+            {ORDEN_CUOTAS.map((o) => <option key={o.id} value={o.id}>{o.etiqueta}</option>)}
           </Selector>
         </Campo>
         <Boton
@@ -345,12 +373,22 @@ function VistaFlujo() {
 
 // ---------- Pagos recibidos ----------
 
+const ORDEN_PAGOS = [
+  { id: 'fecha', etiqueta: 'Más recientes primero', comparar: (a: PagoRecibido, b: PagoRecibido) => b.fecha.localeCompare(a.fecha) || b.id - a.id },
+  { id: 'parcela', etiqueta: 'Parcela (manzana y número)', comparar: (a: PagoRecibido, b: PagoRecibido) => compararParcela(a.parcela, b.parcela) || a.fecha.localeCompare(b.fecha) },
+] as const;
+
+/** Pagos que no cuentan como recibidos: anulados o de una venta anulada (ingresada por error). */
+const sinEfecto = (p: PagoRecibido) => !!p.anulado || !!p.venta_anulada;
+
 function VistaPagos() {
   const { hoy } = useConfig();
   const [desde, setDesde] = useState(`${hoy.slice(0, 7)}-01`);
   const [hasta, setHasta] = useState(hoy);
+  const [orden, setOrden] = useOrden('cobranza-pagos', ORDEN_PAGOS.map((o) => o.id), 'fecha');
   const consulta = useDatos<PagoRecibido[]>(`/cobranza/pagos?desde=${desde}&hasta=${hasta}`);
-  const vigentes = (consulta.datos ?? []).filter((p) => !p.anulado);
+  const ordenados = [...(consulta.datos ?? [])].sort(ORDEN_PAGOS.find((o) => o.id === orden)!.comparar);
+  const vigentes = ordenados.filter((p) => !sinEfecto(p));
   const total = vigentes.reduce((s, p) => s + p.monto + p.mora, 0);
   const suma = (k: 'capital' | 'interes' | 'mora') => vigentes.reduce((s, p) => s + p[k], 0);
 
@@ -359,6 +397,11 @@ function VistaPagos() {
       <div className="flex flex-wrap items-end gap-3">
         <Campo etiqueta="Desde"><Entrada type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} /></Campo>
         <Campo etiqueta="Hasta"><Entrada type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} /></Campo>
+        <Campo etiqueta="Ordenar por">
+          <Selector value={orden} onChange={(e) => setOrden(e.target.value as typeof orden)}>
+            {ORDEN_PAGOS.map((o) => <option key={o.id} value={o.id}>{o.etiqueta}</option>)}
+          </Selector>
+        </Campo>
         <Boton
           variante="secundario" icono={Download} className="ml-auto"
           onClick={() => descargarCsv('pagos-recibidos.csv',
@@ -370,7 +413,7 @@ function VistaPagos() {
       </div>
 
       <Carga consulta={consulta}>
-        {(pagos) => (
+        {() => (
           <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Dato etiqueta="Total recibido" valor={pesos(total)} detalle={plural(vigentes.length, 'pago')} />
@@ -379,7 +422,7 @@ function VistaPagos() {
             <Dato etiqueta="Mora cobrada" valor={pesos(suma('mora'))} detalle="Interés penal registrado aparte" />
           </div>
           <Tarjeta titulo={`${plural(vigentes.length, 'pago')} · ${pesos(total)} recibidos`} relleno={false}>
-            {pagos.length === 0 ? <Vacio titulo="No hay pagos en el período" /> : (
+            {ordenados.length === 0 ? <Vacio titulo="No hay pagos en el período" /> : (
               <Tabla>
                 <thead>
                   <tr>
@@ -394,17 +437,17 @@ function VistaPagos() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pagos.map((p) => (
-                    <tr key={p.id} className={p.anulado ? 'text-stone-400 line-through [&_td]:text-stone-400' : ''}>
+                  {ordenados.map((p) => (
+                    <tr key={p.id} className={sinEfecto(p) ? 'text-stone-400 line-through [&_td]:text-stone-400' : ''}>
                       <td className={`${td} whitespace-nowrap py-2`}>{fecha(p.fecha)}</td>
                       <td className={`${td} py-2`}>
                         <Link to={`/ventas/${p.venta_id}`} className="font-medium hover:text-marca-700 hover:underline">{p.cliente}</Link>
                         <div className="text-xs text-stone-500">Parcela {p.parcela}</div>
                       </td>
                       <td className={`${td} ${num} py-2 font-medium`}>{pesos(p.monto + p.mora)}</td>
-                      <td className={`${td} ${num} hidden py-2 md:table-cell`}>{p.anulado ? '—' : pesos(p.capital)}</td>
-                      <td className={`${td} ${num} hidden py-2 md:table-cell`}>{p.anulado ? '—' : pesos(p.interes)}</td>
-                      <td className={`${td} hidden py-2 sm:table-cell`}>{p.anulado ? 'Anulado' : `${p.imputado_a ?? ''}${p.mora > 0 ? ` + mora ${pesos(p.mora)}` : ''}`}</td>
+                      <td className={`${td} ${num} hidden py-2 md:table-cell`}>{sinEfecto(p) ? '—' : pesos(p.capital)}</td>
+                      <td className={`${td} ${num} hidden py-2 md:table-cell`}>{sinEfecto(p) ? '—' : pesos(p.interes)}</td>
+                      <td className={`${td} hidden py-2 sm:table-cell`}>{p.anulado ? 'Anulado' : p.venta_anulada ? 'Venta anulada' : `${p.imputado_a ?? ''}${p.mora > 0 ? ` + mora ${pesos(p.mora)}` : ''}`}</td>
                       <td className={`${td} hidden py-2 md:table-cell`}>{MEDIOS_PAGO[p.medio] ?? p.medio}</td>
                       <td className={`${td} hidden py-2 lg:table-cell`}>{p.comprobante || '—'}</td>
                     </tr>

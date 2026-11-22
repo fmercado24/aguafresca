@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router';
 import { BellRing, Download, HandCoins, Plus, X } from 'lucide-react';
 import { api, useDatos } from '../api';
 import { useAvisos, useSesion } from '../contexto';
-import { descargarCsv, fecha, fechaHoraRegistro, formatearRut, pesos, plural } from '../formato';
+import { compararParcela, descargarCsv, fecha, fechaHoraRegistro, formatearRut, pesos, plural } from '../formato';
 import type { SolicitudVenta, VentaResumen } from '../tipos';
-import { AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, InsigniaVenta, Modal, Tabla, Tarjeta, Vacio, num, td, th } from '../ui';
+import {
+  AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, InsigniaVenta, Modal, SelectorOrden, Tabla, Tarjeta, Vacio, num, td, th, useOrden,
+} from '../ui';
 
 // ---------- Ventas que informó el abogado y falta registrar ----------
 
@@ -83,19 +85,30 @@ const FILTROS: { id: Filtro; etiqueta: string; aplica: (v: VentaResumen) => bool
   { id: 'anuladas', etiqueta: 'Anuladas', aplica: (v) => v.estado === 'anulada' },
 ];
 
+const ORDENES = [
+  { id: 'recientes', etiqueta: 'Más recientes primero', comparar: (a: VentaResumen, b: VentaResumen) => b.fecha.localeCompare(a.fecha) || b.id - a.id },
+  { id: 'parcela', etiqueta: 'Parcela (manzana y número)', comparar: (a: VentaResumen, b: VentaResumen) => compararParcela(a.parcela, b.parcela) || b.id - a.id },
+  { id: 'saldo', etiqueta: 'Mayor saldo por pagar', comparar: (a: VentaResumen, b: VentaResumen) => saldoDe(b) - saldoDe(a) || compararParcela(a.parcela, b.parcela) },
+] as const;
+type Orden = (typeof ORDENES)[number]['id'];
+const saldoDe = (v: VentaResumen) => (v.estado === 'anulada' ? 0 : v.saldo);
+
 export function Ventas() {
   const opera = useSesion().puede('operaciones');
   const navegar = useNavigate();
   const consulta = useDatos<VentaResumen[]>('/ventas');
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [busqueda, setBusqueda] = useState('');
+  const [orden, setOrden] = useOrden<Orden>('ventas', ORDENES.map((o) => o.id), 'recientes');
   const ventas = consulta.datos ?? [];
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     const aplica = FILTROS.find((f) => f.id === filtro)!.aplica;
-    return ventas.filter((v) => aplica(v) && (!q || v.cliente.toLowerCase().includes(q) || v.parcela.toLowerCase() === q || v.cliente_rut.includes(q)));
-  }, [ventas, filtro, busqueda]);
+    return ventas
+      .filter((v) => aplica(v) && (!q || v.cliente.toLowerCase().includes(q) || v.parcela.toLowerCase() === q || v.cliente_rut.includes(q)))
+      .sort(ORDENES.find((o) => o.id === orden)!.comparar);
+  }, [ventas, filtro, busqueda, orden]);
 
   const vigentes = ventas.filter((v) => v.estado === 'vigente');
 
@@ -134,6 +147,7 @@ export function Ventas() {
                     </button>
                   ))}
                 </div>
+                <SelectorOrden valor={orden} alCambiar={setOrden} opciones={ORDENES.map(({ id, etiqueta }) => ({ id, etiqueta }))} />
                 <Boton
                   chico variante="secundario" icono={Download}
                   onClick={() => descargarCsv('ventas.csv',
@@ -171,7 +185,7 @@ export function Ventas() {
                         <td className={`${td} hidden whitespace-nowrap md:table-cell`}>{fecha(v.fecha)}</td>
                         <td className={`${td} ${num} hidden lg:table-cell`}>{pesos(v.precio)}</td>
                         <td className={`${td} hidden whitespace-nowrap sm:table-cell`}>
-                          {v.n_cuotas > 0 ? <>{v.cuotas_pagadas} de {v.n_cuotas} <span className="text-stone-500">· {pesos(v.valor_cuota)}</span></> : 'Contado'}
+                          {v.n_cuotas > 0 ? <>{v.cuotas_pagadas} de {v.cuotas_a_pagar} <span className="text-stone-500">· {pesos(v.valor_cuota)}</span></> : 'Contado'}
                         </td>
                         <td className={`${td} ${num} font-medium`}>{v.estado === 'anulada' ? '—' : pesos(v.saldo)}</td>
                         <td className={td}><InsigniaVenta estado={v.estado} atrasadas={v.n_atrasadas} /></td>

@@ -195,3 +195,7 @@ export function descargar(nombre: string, contenido: Blob) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** Orden de los códigos de parcela por manzana y número, de menor a mayor: A-1, A-2, …, A-10, B-1. */
+export const compararParcela = (a: string | null | undefined, b: string | null | undefined) =>
+  String(a ?? '').localeCompare(String(b ?? ''), 'es', { numeric: true, sensitivity: 'base' });

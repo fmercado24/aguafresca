@@ -35,13 +35,20 @@ function asuntoDe(doc) {
 }
 
 function correoDeCarta(doc, empresa) {
+  // Los programas de correo no muestran imágenes incrustadas como "data:": la firma va como imagen adjunta.
+  const adjuntos = [];
+  const contenido = String(doc.contenido).replace(/src="data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)"/g, (_, tipo, datos) => {
+    const cid = `firma-${adjuntos.length + 1}@aguafresca`;
+    adjuntos.push({ filename: `firma.${tipo === 'image/png' ? 'png' : 'jpg'}`, content: Buffer.from(datos, 'base64'), contentType: tipo, cid });
+    return `src="cid:${cid}"`;
+  });
   const html = `<!doctype html><html><body style="margin:0;background:#f4f4f2;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#1c1917">
 <div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:28px 32px;font-size:14px;line-height:1.55">
 <div style="font-weight:bold;font-size:16px;margin-bottom:16px">${empresa.razon_social || ''}</div>
-<style>table.tabla-doc{border-collapse:collapse;width:100%;margin:8px 0}table.tabla-doc th,table.tabla-doc td{border:1px solid #d6d3d1;padding:4px 8px;font-size:13px}td.num,th.num{text-align:right}</style>
-${doc.contenido}
+<style>table.tabla-doc{border-collapse:collapse;width:100%;margin:8px 0}table.tabla-doc th,table.tabla-doc td{border:1px solid #d6d3d1;padding:4px 8px;font-size:13px}td.num,th.num{text-align:right}img.firma-digital{display:block;max-height:80px;max-width:240px;margin-top:12px}</style>
+${contenido}
 </div></body></html>`;
-  return { asunto: asuntoDe(doc), html, texto: htmlATexto(doc.contenido) };
+  return { asunto: asuntoDe(doc), html, texto: htmlATexto(doc.contenido), adjuntos };
 }
 
 // ---------- Envío de una carta ya emitida ----------

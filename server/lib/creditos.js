@@ -1,22 +1,27 @@
 import { db, insertar } from '../db.js';
-import { tablaAmortizacion, tablaPorCuota, pesos } from './finanzas.js';
-import { hoy, diasEntre, esFecha } from './fechas.js';
+import { tablaAmortizacion, tablaPorCuota, cuotasDesde, pesos } from './finanzas.js';
+import { hoy, diasEntre, esFecha, sumarMeses } from './fechas.js';
 import { ErrorApp } from './validar.js';
 import { leerSeccion } from './configuracion.js';
 import { registrar, diferencias, describirCambios } from './bitacora.js';
 
 export const MEDIOS_PAGO = ['transferencia', 'deposito', 'efectivo', 'cheque', 'tarjeta', 'otro'];
 
+/** Cuota aplazada: ese mes no se paga (monto $0) y su interés se suma a la deuda de capital. */
+export const esAplazada = (c) => c.tipo !== 'pie' && c.monto === 0 && c.interes > 0;
+
 /**
  * Agrega a una cuota su situación al día de hoy:
- * saldo, estado (pagada | atrasada | parcial | pendiente), días de atraso e interés por mora estimado.
+ * saldo, estado (pagada | atrasada | parcial | pendiente | aplazada), días de atraso e interés por mora estimado.
  */
 export function decorarCuota(c, fechaHoy, tasaMoraMensual) {
   const saldo = Math.max(0, c.monto - c.pagado);
   let estado = 'pendiente';
   let dias_atraso = 0;
   let mora_estimada = 0;
-  if (saldo === 0) {
+  if (esAplazada(c)) {
+    estado = 'aplazada';
+  } else if (saldo === 0) {
     estado = 'pagada';
   } else if (c.fecha_vencimiento < fechaHoy) {
     estado = 'atrasada';
@@ -266,6 +271,77 @@ const entero = (v, campo, min = 0) => {
   return n;
 };
 
+const meses = (desde, hasta) => {
+  const [a1, m1] = desde.split('-').map(Number);
+  const [a2, m2] = hasta.split('-').map(Number);
+  return (a2 - a1) * 12 + (m2 - m1);
+};
+
+/** Monto habitual de las cuotas de una tabla (el más repetido, sin contar las aplazadas). */
+export const montoRegular = (cuotas) => valorMasFrecuente(cuotas.map((c) => c.interes + c.amortizacion).filter((m) => m > 0));
+
+const aFilasTabla = (filas) => filas.map((f) => ({ fecha_vencimiento: f.fecha, interes: f.interes, amortizacion: f.amortizacion }));
+
+/** Recalcula desde la posición `k` una serie de { fecha, monto }; la última cuota se cobra completa. */
+function rehacerDesde(t, k, serie) {
+  const financiado = t.precio - t.pie;
+  const previas = t.cuotas.slice(0, k);
+  const saldo = financiado - previas.reduce((s, c) => s + c.amortizacion, 0);
+  if (saldo <= 0) throw new ErrorApp('No queda capital pendiente desde esa cuota');
+  const regular = montoRegular(t.cuotas);
+  const ultima = serie.at(-1);
+  if (ultima && ultima.monto > 0 && ultima.monto < regular) ultima.monto = regular;
+  const { filas } = cuotasDesde({ saldo, tasaMensual: t.tasa_mensual, cuotas: serie, montoFinal: regular });
+  return { ...t, cuotas: [...previas, ...aFilasTabla(filas)] };
+}
+
+/**
+ * Aplaza `n` meses desde la cuota N° `desde`: esos meses quedan como cuotas aplazadas ($0, solo se carga
+ * el interés, que aumenta la deuda de capital) y las cuotas siguientes se corren `n` meses, con su mismo monto.
+ * Al final se agregan las cuotas que hagan falta para pagar el capital; la última se cobra completa.
+ */
+export function aplazarCuotas(t, desde, n) {
+  const k = desde - 1;
+  if (!Number.isInteger(k) || k < 0 || k >= t.cuotas.length) throw new ErrorApp('Indique una cuota de la tabla');
+  if (!Number.isInteger(n) || n < 1 || n > 36) throw new ErrorApp('Indique cuántos meses se aplazan (de 1 a 36)');
+  if (!(t.tasa_mensual >= 0)) throw new ErrorApp('La venta no tiene tasa de interés');
+  const fecha0 = t.cuotas[k].fecha_vencimiento;
+  return rehacerDesde(t, k, [
+    ...Array.from({ length: n }, (_, m) => ({ fecha: sumarMeses(fecha0, m), monto: 0 })),
+    ...t.cuotas.slice(k).map((c) => ({ fecha: sumarMeses(c.fecha_vencimiento, n), monto: c.interes + c.amortizacion })),
+  ]);
+}
+
+/**
+ * Tablas cargadas desde el Excel en que los meses repactados quedaron como saltos de fecha: cada mes que falta
+ * entre dos cuotas se agrega como cuota aplazada y se recalcula desde ahí. Devuelve null si no hay saltos.
+ */
+export function completarMesesRepactados(t) {
+  const k = t.cuotas.findIndex((c, i) => i > 0 && meses(t.cuotas[i - 1].fecha_vencimiento, c.fecha_vencimiento) > 1);
+  if (k < 0) return null;
+  const serie = [];
+  let anterior = t.cuotas[k - 1].fecha_vencimiento;
+  t.cuotas.slice(k).forEach((c, j, cola) => {
+    for (let m = 1; m < meses(anterior, c.fecha_vencimiento); m++) serie.push({ fecha: sumarMeses(anterior, m), monto: 0 });
+    // Una última cuota fechada en el mismo mes que la anterior (error de tipeo en la planilla) pasa al mes siguiente.
+    const fecha = j === cola.length - 1 && meses(anterior, c.fecha_vencimiento) < 1 ? sumarMeses(anterior, 1) : c.fecha_vencimiento;
+    serie.push({ fecha, monto: c.interes + c.amortizacion });
+    anterior = fecha;
+  });
+  return rehacerDesde(t, k, serie);
+}
+
+/** La última cuota se cobra completa (el monto habitual). Devuelve null si ya lo es. */
+export function ultimaCuotaCompleta(t) {
+  const ultima = t.cuotas.at(-1);
+  const regular = montoRegular(t.cuotas);
+  if (!ultima || ultima.interes + ultima.amortizacion >= regular) return null;
+  const k = t.cuotas.length - 1;
+  const fecha = k > 0 && meses(t.cuotas[k - 1].fecha_vencimiento, ultima.fecha_vencimiento) < 1
+    ? sumarMeses(t.cuotas[k - 1].fecha_vencimiento, 1) : ultima.fecha_vencimiento;
+  return rehacerDesde(t, k, [{ fecha, monto: regular }]);
+}
+
 /** Valida una tabla recibida desde el editor. El monto de cada cuota es siempre interés + amortización. */
 export function leerTabla(cuerpo) {
   if (!cuerpo || typeof cuerpo !== 'object') throw new ErrorApp('Solicitud inválida');
@@ -281,8 +357,11 @@ export function leerTabla(cuerpo) {
     const n = i + 1;
     if (!c || !esFecha(c.fecha_vencimiento)) throw new ErrorApp(`Cuota ${n}: fecha de vencimiento inválida`);
     const interes = entero(c.interes, `Cuota ${n}, interés`);
-    const amortizacion = entero(c.amortizacion, `Cuota ${n}, amortización`);
-    if (interes + amortizacion <= 0) throw new ErrorApp(`Cuota ${n}: el monto debe ser mayor que cero`);
+    const amortizacion = entero(c.amortizacion, `Cuota ${n}, amortización`, -100_000_000_000);
+    // Cuota aplazada: monto $0, el interés del mes se suma al capital (amortización negativa).
+    const aplazada = interes > 0 && amortizacion === -interes;
+    if (!aplazada && amortizacion < 0) throw new ErrorApp(`Cuota ${n}: la amortización no puede ser negativa (salvo en una cuota aplazada)`);
+    if (!aplazada && interes + amortizacion <= 0) throw new ErrorApp(`Cuota ${n}: el monto debe ser mayor que cero`);
     return { fecha_vencimiento: c.fecha_vencimiento, interes, amortizacion };
   });
   if (precio - pie > 0 && cuotas.length === 0) throw new ErrorApp('Hay saldo a crédito: la tabla debe tener al menos una cuota');
@@ -347,7 +426,7 @@ export function aplicarTabla(ventaId, t, { usuarioId, motivo, accion = 'amortiza
       `UPDATE ventas SET precio = ?, pie = ?, monto_financiado = ?, tasa_mensual = ?, n_cuotas = ?, valor_cuota = ?, fecha_primera_cuota = ?
         WHERE id = ?`,
       t.precio, t.pie, financiado, t.cuotas.length ? t.tasa_mensual : 0, t.cuotas.length,
-      valorMasFrecuente(t.cuotas.map((c) => c.interes + c.amortizacion)), t.cuotas[0]?.fecha_vencimiento ?? null, ventaId,
+      montoRegular(t.cuotas), t.cuotas[0]?.fecha_vencimiento ?? null, ventaId,
     );
     reaplicarPagos(ventaId);
 
@@ -414,18 +493,29 @@ export function totalesDe(cuotas) {
   const t = {
     total_a_pagar: 0, pagado: 0, saldo: 0, capital_insoluto: 0, intereses_totales: 0,
     atrasado: 0, n_atrasadas: 0, mora_estimada: 0, dias_atraso: 0,
-    cuotas_total: 0, cuotas_pagadas: 0, proxima: null,
+    cuotas_total: 0, cuotas_pagadas: 0, cuotas_aplazadas: 0, cuotas_pendientes: 0, pendiente_desde: null, pendiente_hasta: null, proxima: null,
   };
   for (const c of cuotas) {
     t.total_a_pagar += c.monto;
     t.pagado += c.pagado;
     t.saldo += c.saldo;
     t.intereses_totales += c.interes;
+    if (c.estado === 'aplazada') {
+      // El interés de una cuota aplazada se suma al capital cuando llega su mes.
+      if (c.fecha_vencimiento >= hoy()) t.capital_insoluto += c.amortizacion;
+      t.cuotas_aplazadas++;
+      continue;
+    }
     // Un pago parcial cubre primero el interés de la cuota y después el capital.
     t.capital_insoluto += Math.min(c.amortizacion, c.saldo);
     if (c.tipo === 'cuota') {
       t.cuotas_total++;
       if (c.estado === 'pagada') t.cuotas_pagadas++;
+      if (c.saldo > 0) {
+        t.cuotas_pendientes++;
+        t.pendiente_desde ??= c.numero;
+        t.pendiente_hasta = c.numero;
+      }
     }
     if (c.estado === 'atrasada') {
       t.atrasado += c.saldo;

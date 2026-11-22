@@ -134,6 +134,7 @@ rutasCobranza.get('/cobranza/pagos', (req, res) => {
   const hasta = esFecha(req.query.hasta) ? req.query.hasta : fechaHoy;
   const pagos = db.all(
     `SELECT pg.id, pg.venta_id, pg.fecha, pg.monto, pg.mora, pg.medio, pg.comprobante, pg.observacion, pg.anulado,
+            v.estado = 'anulada' AS venta_anulada,
             cl.id AS cliente_id, cl.nombre AS cliente, p.numero AS parcela,
             (SELECT group_concat(CASE WHEN c.numero = 0 THEN 'Pie' ELSE 'N° ' || c.numero END, ', ')
                FROM pago_cuotas pc JOIN cuotas c ON c.id = pc.cuota_id WHERE pc.pago_id = pg.id) AS imputado_a
@@ -145,8 +146,10 @@ rutasCobranza.get('/cobranza/pagos', (req, res) => {
       ORDER BY pg.fecha DESC, pg.id DESC`,
     desde, hasta,
   );
-  const desglose = desglosePagos([...new Set(pagos.filter((p) => !p.anulado).map((p) => p.venta_id))]);
-  res.json(pagos.map((p) => ({ ...p, ...(p.anulado ? { capital: 0, interes: 0 } : desglose.get(p.id) ?? { capital: p.monto, interes: 0 }) })));
+  // Los pagos anulados y los de ventas anuladas se muestran, pero no cuentan como recibidos.
+  const sinEfecto = (p) => p.anulado || p.venta_anulada;
+  const desglose = desglosePagos([...new Set(pagos.filter((p) => !sinEfecto(p)).map((p) => p.venta_id))]);
+  res.json(pagos.map((p) => ({ ...p, ...(sinEfecto(p) ? { capital: 0, interes: 0 } : desglose.get(p.id) ?? { capital: p.monto, interes: 0 }) })));
 });
 
 // ---------- Panel de inicio ----------
@@ -162,12 +165,15 @@ rutasCobranza.get('/panel', (req, res) => {
     if (f.estado === 'disponible') parcelas.valor_disponible = f.valor;
   }
 
+  // Capital: lo que falta amortizar. Las cuotas aplazadas que todavía no llegan suman su interés al capital
+  // (amortización negativa); las ya pasadas están incluidas en el saldo de las cuotas siguientes.
   const cartera = db.get(
-    `SELECT COALESCE(SUM(c.monto - c.pagado), 0) AS por_cobrar,
-            COALESCE(SUM(MIN(c.amortizacion, c.monto - c.pagado)), 0) AS capital,
+    `SELECT COALESCE(SUM(CASE WHEN c.monto = 0 THEN 0 ELSE c.monto - c.pagado END), 0) AS por_cobrar,
+            COALESCE(SUM(CASE WHEN c.monto = 0 THEN c.amortizacion ELSE MIN(c.amortizacion, c.monto - c.pagado) END), 0) AS capital,
             COUNT(DISTINCT v.id) AS n_creditos
        FROM cuotas c JOIN ventas v ON v.id = c.venta_id
-      WHERE v.estado = 'vigente' AND c.pagado < c.monto`,
+      WHERE v.estado = 'vigente' AND (c.pagado < c.monto OR (c.monto = 0 AND c.fecha_vencimiento >= ?))`,
+    fechaHoy,
   );
   const atraso = db.get(
     `SELECT COALESCE(SUM(c.monto - c.pagado), 0) AS monto, COUNT(*) AS n_cuotas, COUNT(DISTINCT v.cliente_id) AS n_deudores
@@ -175,14 +181,18 @@ rutasCobranza.get('/panel', (req, res) => {
       WHERE v.estado = 'vigente' AND c.pagado < c.monto AND c.fecha_vencimiento < ?`,
     fechaHoy,
   );
+  // Recaudado: pagos efectivamente recibidos en el mes. No cuentan los pagos anulados, los de ventas anuladas
+  // (ventas ingresadas por error) ni los de la carga inicial de ventas antiguas (no son dinero que entró este mes).
   const recaudado = db.get(
-    `SELECT COALESCE(SUM(monto + mora), 0) AS monto, COUNT(*) AS n FROM pagos WHERE anulado = 0 AND substr(fecha, 1, 7) = ?`,
+    `SELECT COALESCE(SUM(pg.monto + pg.mora), 0) AS monto, COUNT(*) AS n
+       FROM pagos pg JOIN ventas v ON v.id = pg.venta_id
+      WHERE pg.anulado = 0 AND v.estado <> 'anulada' AND pg.observacion NOT LIKE 'Carga inicial%' AND substr(pg.fecha, 1, 7) = ?`,
     mes,
   );
   const cuotasDelMes = db.get(
     `SELECT COALESCE(SUM(c.monto), 0) AS monto, COALESCE(SUM(c.pagado), 0) AS pagado, COUNT(*) AS n
        FROM cuotas c JOIN ventas v ON v.id = c.venta_id
-      WHERE v.estado <> 'anulada' AND substr(c.fecha_vencimiento, 1, 7) = ?`,
+      WHERE v.estado <> 'anulada' AND c.monto > 0 AND substr(c.fecha_vencimiento, 1, 7) = ?`,
     mes,
   );
   const ventasDelMes = db.get(

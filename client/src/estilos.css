@@ -67,6 +67,10 @@ button:not(:disabled),
 .documento h3 { font-size: 11.5pt; font-weight: 700; margin: 1em 0 0.5em; }
 .documento ul { list-style: disc; margin: 0 0 0.85em 1.6em; }
 .documento ol { list-style: decimal; margin: 0 0 0.85em 1.6em; }
+/* Pie de firma de las cartas: firma digital del representante legal sobre su nombre */
+.documento .pie-firma { margin-top: 1.2em; break-inside: avoid; }
+.documento .pie-firma img.firma-digital { display: block; max-height: 80px; max-width: 240px; margin-bottom: 0.2em; }
+.documento .pie-firma p { border-top: 1px solid #78716c; display: inline-block; min-width: 16em; padding-top: 0.2em; }
 .documento table.tabla-doc {
   width: 100%;
   border-collapse: collapse;

@@ -9,7 +9,7 @@ cobranza, clientes, cotizaciones, contratos y visitas. Se usa desde el computado
 | Requerimiento | Dónde está en el sistema |
 |---|---|
 | 1. Control de ventas con crédito: cuotas pendientes, atrasadas, flujo futuro, tabla de amortización con interés | **Ventas** (tabla de amortización de cada venta, registro de pagos) y **Cobranza** (cuotas atrasadas, cuotas pendientes, flujo de ingresos, pagos recibidos) |
-| 2. Mapa de parcelas disponibles con sus valores | **Parcelas** → Mapa (plano del topógrafo con cada parcela coloreada por estado y enlace a Google Maps) y Lista de precios |
+| 2. Mapa de parcelas disponibles con sus valores | **Parcelas** → Mapa (plano del topógrafo con cada parcela coloreada por estado, "¿En qué parcela estoy?" con el GPS del celular y archivo para Google Earth) y Lista de precios |
 | 3. Cartas tipo de cobranza | **Documentos** → Confeccionar documento → Carta de cobranza (3 plantillas editables) |
 | 4. Ficha de deudores con antecedentes | **Clientes** → ficha: datos personales, antecedentes laborales y comerciales, aval, compras, deuda, pagos, bitácora de cobranza |
 | 5. Contratos tipo de promesa | **Documentos** → Promesa de compraventa (plantillas a crédito y al contado), exporta a PDF y Word |
@@ -137,8 +137,30 @@ formato correcto.
 
 Al cotizar o vender, en **Calcular por** se elige *N° de cuotas* (se calcula el valor de la cuota) o *Monto de la cuota*: se indica
 un monto cerrado, como $500.000 (solo múltiplos de $1.000; al salir del campo se redondea), y el sistema calcula cuántas cuotas
-hacen falta. Todas las cuotas son de ese monto y la última es menor, por el saldo que queda. Si la cuota no alcanza a cubrir el
-interés del mes o el crédito pasaría de 360 cuotas, lo avisa.
+hacen falta. Todas las cuotas son de ese monto, **también la última**: lo que la última excede al saldo se cuenta como interés
+(así lo cobra la empresa). Con *N° de cuotas* la cuota calculada se redondea hacia arriba a $1.000 y todas son iguales. Si la cuota
+no alcanza a cubrir el interés del mes o el crédito pasaría de 360 cuotas, lo avisa.
+
+El **pie habitual** que se propone al cotizar y vender es un monto en pesos (Configuración → Crédito y cobranza); si el precio
+es menor, el pie propuesto es el precio.
+
+### Aplazar cuotas
+
+Cuando se acuerda con un cliente que no pague uno o más meses (repactación), en la venta → **Aplazar cuotas** (contador o super
+administrador) se elige desde qué cuota y cuántos meses. Esos meses la cuota queda en **$0**: se carga solo el interés del mes, que
+**aumenta la deuda de capital**, y las cuotas siguientes se corren con su mismo monto; al final se agregan las que hagan falta.
+Antes de guardar se ve cómo queda el crédito (cuotas, fecha de término, total a pagar), se exige un motivo y el cambio queda en
+el historial de la venta, desde donde se puede deshacer. En el editor de la tabla está la misma herramienta. Las cuotas aplazadas
+no cuentan como atrasadas ni como cuotas por pagar.
+
+### Pie de firma y firma digital
+
+Los comprobantes de pago, las cotizaciones, el estado de cuenta impreso y las cartas de cobranza llevan el pie de firma del
+**representante legal**: su firma digital, nombre, cargo, RUT y la razón social. La firma se carga en **Configuración → Empresa y
+proyecto → Firma digital** (o el dueño designado representante, en *Mi cuenta*): una foto o escaneo de la firma en papel blanco;
+el sistema quita el fondo. En las cartas va con la variable `{{firma}}`; al enviarlas por correo la firma viaja como imagen adjunta.
+El comprobante de pago indica **cuántas cuotas quedan pendientes y de cuál a cuál** (por ejemplo "Quedan 56 cuotas pendientes:
+de la N° 51 a la N° 106").
 
 ### Visitas y avisos
 
@@ -212,8 +234,9 @@ Desde una venta, **Editar tabla** (contador o super administrador):
 
 - Cada cuota se edita a mano: vencimiento, interés y amortización. La cuota es siempre interés + amortización y el saldo insoluto se recalcula solo; las celdas cambiadas se marcan.
 - **Recalcular desde una cuota**: renegociación del capital pendiente con otra tasa o número de cuotas (cuota fija).
-- **Mover vencimientos**: postergar meses o cambiar el día de pago desde una cuota en adelante.
-- Agregar o quitar cuotas, **cerrar el saldo en $0** en la última cuota, cambiar precio, pie y tasa.
+- **Aplazar cuotas**: meses en $0 en que se carga solo el interés (ver *Aplazar cuotas*).
+- **Mover vencimientos**: postergar meses o cambiar el día de pago desde una cuota en adelante (sin cargar interés).
+- Agregar o quitar cuotas, **cerrar el saldo en $0** o dejar la **última cuota completa**, cambiar precio, pie y tasa.
 - Antes de guardar se revisa un resumen (totales antes y después, cuotas modificadas, advertencias). No deja guardar una tabla por debajo de lo ya pagado ni cuotas en $0; un saldo final distinto de $0 exige aceptar la advertencia.
 - Los pagos ya registrados se vuelven a imputar a la tabla nueva.
 
@@ -225,9 +248,10 @@ Los planos que entregó el cliente están en `planos/` (AutoCAD `.dwg` y Google 
 - **185 lotes en 9 manzanas**, cada una con su numeración desde 1: A (28), B (12), C (16), D (4), E (9), F (4), G (18), H (9) e I (85).
   El código de cada parcela es *manzana-número* (por ejemplo `B-12`): el número es el del plano y la letra es la que usan los
   dueños y el contador (el plano no trae letras; se confirmaron con ellos y están en `LETRAS_DUENOS` del conversor):
-  A = los 28 lotes del sur, junto al camino público; B = la franja de 12 del extremo poniente; C = 16; H = 9 al norte, entre la C
-  y la G; G = 18 al norte; D = 4 pegados a la G; F = los 4 siguientes hacia el oriente; E = 9 al sur-oriente, junto a la A;
-  I = los 85 del oriente, hacia el Río Colorado. Si se quisiera otro nombre, el super administrador lo cambia en
+  A = los 28 lotes del sur, junto al camino público; B = la franja de 12 del extremo poniente; C = 16; en el bloque doble del
+  norte, la fila de arriba es la **H** (H-1 a H-9) y la de abajo G-10 a G-18; la fila pegada a la C es G-1 a G-9 (corregido con los
+  dueños el 21-11-2026); D = 4 pegados al bloque del norte; F = los 4 siguientes hacia el oriente; E = 9 al sur-oriente, junto a
+  la A; I = los 85 del oriente, hacia el Río Colorado. Si se quisiera otro nombre, el super administrador lo cambia en
   *Cambios en bloque → Manzana y código*.
 - **Superficie**: la anotada por el topógrafo en el plano. En los lotes I-52, I-54, I-75, I-77 e I-84 el contorno dibujado difiere
   más de un 3 % de lo anotado; se usa lo anotado.
@@ -235,6 +259,20 @@ Los planos que entregó el cliente están en `planos/` (AutoCAD `.dwg` y Google 
   camino predial público, Río Colorado o límite del fundo). Son un **borrador**: el abogado debe revisarlos contra el plano
   archivado antes de usarlos en una promesa. Se editan en cada parcela.
 - **Ubicación**: el plano está georreferenciado con el `.kmz` (error menor a 1 m); cada parcela y cada visita tienen enlace a Google Maps.
+- **En terreno**: en el celular, **Parcelas → ¿En qué parcela estoy?** usa el GPS y marca en el mapa dónde está uno y en qué
+  parcela (o la más cercana y a cuántos metros). Requiere el sistema publicado con HTTPS.
+- **Imagen satelital**: el botón de satélite del mapa cambia el dibujo del plano por la foto satelital (Esri World Imagery), con
+  las parcelas encima; cada equipo recuerda la vista elegida. Antes de usarla comercialmente conviene revisar las condiciones de
+  uso de Esri (o cambiarla por otro proveedor, como Google, que pide una clave de pago).
+- **Google Earth**: no se puede abrir con un archivo indicado en un enlace, así que se configura una vez (contador o super
+  administrador, en el botón *Google Earth* del mapa): se descarga un *enlace de red* (KML chico), se importa en un proyecto de
+  Google Earth y se pega en el sistema el vínculo de ese proyecto. Desde ahí el botón *Google Earth* abre el proyecto en una
+  pestaña nueva, y el proyecto lee las parcelas al día desde `/earth/<clave>/parcelas.kml` (sin sesión: lo protege la clave larga
+  de la dirección, que se puede renovar, y no lleva nombres de compradores). Con la dirección temporal de Cloudflare, al
+  reiniciarse el servidor la dirección cambia y hay que volver a importar el enlace. También se puede descargar un archivo fijo
+  con los datos del día.
+- **Al tocar una parcela**: si está vendida se ven los datos del propietario (y se pueden editar ahí mismo) y su situación de
+  pago; si no, se cambia su precio.
 - **Precios**: el plano no los trae; las parcelas parten con *precio por definir*.
 
 Volver a cargar el plano (**Mapa → Editar mapa → Actualizar desde el plano**) no duplica parcelas ni cambia precios, estados ni
@@ -264,6 +302,12 @@ base de prueba anterior quedó en `data/respaldo-base-de-prueba-2026-11-17/`.
 
 Desde ahora las correcciones se hacen **en el sistema** (ficha del cliente, *Editar tabla* de la venta, corregir pagos), no
 volviendo a cargar el Excel: una nueva carga borraría lo registrado después.
+
+**Correcciones automáticas** (`server/lib/correcciones.js`): cuando hay que corregir datos ya cargados, el servidor lo hace una
+sola vez al arrancar después de una actualización, queda en el registro de cambios y se avisa al contador. Así se aplicaron
+(21-11-2026): los meses repactados de C-13, C-16, G-12 y G-15 como cuotas aplazadas (antes su interés se había sumado a las
+cuotas siguientes); la **última cuota completa** en los créditos vigentes; la ubicación de las manzanas G y H en el mapa; y el pie
+de firma en las cartas de cobranza. Cada tabla corregida se puede deshacer desde el historial de su venta.
 
 ### Cargar las ventas que ya existen
 
@@ -348,12 +392,15 @@ para restaurar, basta con volver a copiarla. Conviene hacerlo con el sistema det
 
 ## Cómo calcula
 
-- **Cuotas**: cuota fija mensual (sistema francés) con interés sobre el saldo insoluto, en pesos sin decimales. La última cuota absorbe la diferencia de redondeo, de modo que el saldo termina exactamente en $0.
+- **Cuotas**: cuota fija mensual de monto cerrado (múltiplo de $1.000) con interés sobre el saldo insoluto, en pesos sin decimales. La última cuota también es completa: amortiza lo que queda y el resto es interés, de modo que el saldo termina exactamente en $0.
+- **Cuota aplazada**: cuota de $0; el interés del mes se suma al capital (amortización negativa) y se paga con las cuotas siguientes.
 - **Vencimientos**: mismo día de cada mes que la primera cuota (si el mes no tiene ese día, el último día del mes).
 - **Pagos**: se imputan a la cuota más antigua con saldo; admite abonos parciales y pagos que cubren varias cuotas. Al anular un pago, las cuotas vuelven a su estado anterior.
 - **Atraso**: una cuota está atrasada desde el día siguiente a su vencimiento si tiene saldo.
 - **Interés por mora**: es una *estimación informativa* — saldo de la cuota × tasa de mora mensual × días de atraso / 30. No se cobra automáticamente: al registrar un pago se anota aparte la mora efectivamente cobrada.
 - **Flujo de ingresos**: suma por mes del saldo de las cuotas por vencer, separando capital e interés. Lo ya atrasado se muestra aparte.
+- **Recaudado del mes** (Inicio): pagos recibidos en el mes. No cuentan los pagos anulados, los de ventas anuladas (ingresadas por error) ni los de la carga inicial de ventas antiguas.
+- **Listados**: parcelas, ventas y cobranza se pueden ordenar por parcela (manzana y número, de menor a mayor); el orden elegido se recuerda en cada equipo.
 - **Desglose contable de los pagos** (Cobranza → Pagos recibidos): dentro de cada cuota, lo pagado cubre primero el interés y luego el capital. La mora cobrada se informa aparte.
 
 ## Nota legal

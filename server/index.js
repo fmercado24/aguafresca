@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { app } from './app.js';
 import { revisarProgramacion } from './lib/envios.js';
 import { recordatoriosDeVisitas } from './lib/avisos.js';
+import { aplicarCorrecciones } from './lib/correcciones.js';
 
 function noPudoIniciar(e) {
   if (e.code === 'EADDRINUSE') {
@@ -15,6 +16,16 @@ function noPudoIniciar(e) {
 }
 
 // En Express 5 esta función se llama también si el servidor no logra iniciar (con el error como argumento).
+// Correcciones de datos pendientes (se aplican una sola vez, después de una actualización).
+try {
+  for (const r of aplicarCorrecciones()) {
+    console.log(`Corrección de datos — ${r.titulo}: ${r.corregidas.join(', ') || 'ninguna'}`);
+    for (const o of r.omitidas) console.log(`  Sin corregir: ${o}`);
+  }
+} catch (e) {
+  console.error('No se pudieron aplicar las correcciones de datos (se reintentará al reiniciar):', e);
+}
+
 const direccion = config.host ? [config.puerto, config.host] : [config.puerto];
 app.listen(...direccion, (error) => {
   if (error) return noPudoIniciar(error);

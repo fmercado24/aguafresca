@@ -6,6 +6,7 @@ import { config } from './config.js';
 import './db.js';
 import { autenticar, exigirCabecera, asegurarUsuarios } from './auth.js';
 import { ErrorApp } from './lib/validar.js';
+import { claveEarthValida, kmlParcelas } from './lib/google-earth.js';
 import { rutasAuth } from './rutas/auth.js';
 import { rutasConfiguracion } from './rutas/configuracion.js';
 import { rutasParcelas } from './rutas/parcelas.js';
@@ -33,7 +34,8 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       // Los documentos confeccionados llevan estilos en línea (alineación, negritas).
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      // Imagen satelital de fondo del mapa (Esri World Imagery).
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://server.arcgisonline.com'],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
@@ -86,6 +88,22 @@ api.use((err, req, res, next) => {
 });
 
 app.use('/api', api);
+
+// ---------- Plano para Google Earth (sin sesión) ----------
+// Google Earth lee este KML desde el enlace de red que se importó en un proyecto. No pide sesión: la protege la clave
+// larga de la dirección, y no lleva nombres de compradores. Responde a cualquier origen (Google Earth web lo pide
+// desde earth.google.com).
+app.get('/earth/:clave/parcelas.kml', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.set('Cache-Control', 'no-cache');
+  if (!claveEarthValida(req.params.clave)) return res.status(404).type('text/plain; charset=utf-8').send('No existe');
+  try {
+    res.type('application/vnd.google-earth.kml+xml; charset=utf-8').send(kmlParcelas({ conCompradores: false }));
+  } catch (e) {
+    res.status(e instanceof ErrorApp ? e.estado : 500).type('text/plain; charset=utf-8').send(e instanceof ErrorApp ? e.message : 'Error');
+  }
+});
 
 // ---------- Aplicación web (resultado de `npm run build`) ----------
 

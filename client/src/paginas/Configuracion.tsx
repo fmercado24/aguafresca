@@ -1,16 +1,16 @@
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { Link } from 'react-router';
-import { BellRing, CircleCheck, Download, KeyRound, Pencil, ShieldCheck, UserRound } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router';
+import { BellRing, CircleCheck, Download, ImageUp, KeyRound, Pencil, ShieldCheck, Signature, Trash2, UserRound } from 'lucide-react';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
 import { ACCIONES_REGISTRO, ListaCambios, listarCambios } from '../componentes/Cambios';
 import { EnvioDeCartas } from './EnvioCartas';
 import { activarPush, desactivarPush, estadoPush, motivoSinPush, type EstadoPush } from '../push';
-import { correoValido, descargarCsv, errorTelefono, fechaHoraRegistro, formatearRut, rutValido } from '../formato';
+import { correoValido, descargarCsv, errorTelefono, fechaHoraRegistro, formatearRut, pesos, rutValido } from '../formato';
 import type { Config, Cuenta, DatosPersonales, EntradaRegistro, Permiso } from '../tipos';
 import {
-  AreaTexto, Boton, Campo, Carga, Encabezado, Entrada, EntradaDecimal, EntradaEntero, EntradaRut, EntradaTelefono, Insignia, Modal, Pestanas, Selector,
-  Tabla, Tarjeta, Vacio, td, th,
+  AreaTexto, Boton, Campo, Carga, Encabezado, Entrada, EntradaDecimal, EntradaEntero, EntradaMonto, EntradaRut, EntradaTelefono, Insignia, Modal, Pestanas,
+  Selector, Tabla, Tarjeta, Vacio, td, th,
 } from '../ui';
 
 type Pestana = 'empresa' | 'credito' | 'envios' | 'cuentas' | 'registro' | 'cuenta';
@@ -28,7 +28,10 @@ const PESTANAS: { id: Pestana; etiqueta: string; permisos?: Permiso[] }[] = [
 export function Configuracion() {
   const { puede } = useSesion();
   const visibles = PESTANAS.filter((p) => !p.permisos || p.permisos.some(puede));
-  const [pestana, setPestana] = useState<Pestana>(visibles[0].id);
+  // Los avisos pueden enlazar a una pestaña (por ejemplo, /configuracion?pestana=registro).
+  const [params] = useSearchParams();
+  const pedida = visibles.find((p) => p.id === params.get('pestana'))?.id;
+  const [pestana, setPestana] = useState<Pestana>(pedida ?? visibles[0].id);
 
   return (
     <>
@@ -177,7 +180,103 @@ function DatosEmpresa() {
         </div>
       </Tarjeta>
       <BarraGuardar cambios={cambios.length} guardando={guardando} alDescartar={() => { setEmpresa(inicialEmpresa); setProyecto(config.proyecto); }} />
+      <FirmaRepresentante />
     </form>
+  );
+}
+
+// ---------- Firma digital del representante legal ----------
+
+/**
+ * Prepara la imagen de la firma: la achica (máximo 600 × 240) y vuelve transparente el fondo claro del papel,
+ * para que una foto o un escaneo de la firma quede limpio sobre el documento.
+ */
+async function prepararFirma(archivo: File): Promise<string> {
+  const url = URL.createObjectURL(archivo);
+  try {
+    const img = await new Promise<HTMLImageElement>((ok, mal) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = () => mal(new Error('No se pudo leer la imagen'));
+      i.src = url;
+    });
+    const k = Math.min(1, 600 / img.width, 240 / img.height);
+    const lienzo = document.createElement('canvas');
+    lienzo.width = Math.max(1, Math.round(img.width * k));
+    lienzo.height = Math.max(1, Math.round(img.height * k));
+    const ctx = lienzo.getContext('2d')!;
+    ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+    const datos = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
+    const p = datos.data;
+    for (let i = 0; i < p.length; i += 4) {
+      const brillo = (p[i] + p[i + 1] + p[i + 2]) / 3;
+      if (brillo > 215) p[i + 3] = 0;
+      else if (brillo > 170) p[i + 3] = Math.round(p[i + 3] * ((215 - brillo) / 45));
+    }
+    ctx.putImageData(datos, 0, 0);
+    return lienzo.toDataURL('image/png');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Carga o quita la firma del representante legal (va en comprobantes, cotizaciones, estados de cuenta y cartas). */
+export function FirmaRepresentante() {
+  const { firma, empresa } = useConfig();
+  const { recargarConfig } = useSesion();
+  const avisos = useAvisos();
+  const [ocupado, setOcupado] = useState(false);
+  const idArchivo = useId();
+
+  async function subir(archivo: File | undefined) {
+    if (!archivo) return;
+    if (!/^image\/(png|jpeg)$/.test(archivo.type)) return avisos.error('Use una imagen PNG o JPG');
+    setOcupado(true);
+    try {
+      await api.put('/config/firma', { imagen: await prepararFirma(archivo) });
+      await recargarConfig();
+      avisos.ok('Firma cargada: ya aparece en los documentos que se emitan');
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function quitar() {
+    if (!(await avisos.confirmar({ titulo: '¿Quitar la firma?', mensaje: 'Los documentos que se emitan desde ahora saldrán con la línea para firmar a mano. Las cartas ya emitidas conservan la firma.', confirmar: 'Quitar firma', peligro: true }))) return;
+    setOcupado(true);
+    try {
+      await api.del('/config/firma');
+      await recargarConfig();
+      avisos.ok('Firma quitada');
+    } catch (err) {
+      avisos.error(err);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <Tarjeta titulo={<span className="flex items-center gap-2"><Signature className="size-4 text-marca-700" />Firma digital del representante legal</span>}>
+      <p className="text-sm text-stone-600">
+        Sale en el pie de firma de los comprobantes de pago, las cotizaciones, los estados de cuenta y las cartas de cobranza, junto al nombre y RUT de
+        {empresa.representante ? ` ${empresa.representante}` : 'l representante legal'}. Firme en una hoja blanca, sáquele una foto o escanéela y recórtela
+        dejando solo la firma: el fondo blanco se quita solo.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        <div className="flex h-24 w-64 items-center justify-center rounded-lg border border-dashed border-stone-300 bg-white">
+          {firma ? <img src={`/api/config/firma?v=${firma.version}`} alt="Firma del representante legal" className="max-h-20 max-w-60" /> : <span className="text-xs text-stone-400">Sin firma cargada</span>}
+        </div>
+        <div className="flex flex-col gap-2">
+          <label htmlFor={idArchivo} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 py-2 text-sm font-medium text-stone-800 shadow-xs hover:bg-stone-50 ${ocupado ? 'pointer-events-none opacity-50' : ''}`}>
+            <ImageUp className="size-4" />{firma ? 'Reemplazar firma' : 'Subir imagen de la firma'}
+          </label>
+          <input id={idArchivo} type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(e) => { subir(e.target.files?.[0]); e.target.value = ''; }} />
+          {firma && <Boton type="button" variante="fantasma" icono={Trash2} disabled={ocupado} onClick={quitar}>Quitar firma</Boton>}
+        </div>
+      </div>
+    </Tarjeta>
   );
 }
 
@@ -194,7 +293,7 @@ function BarraGuardar({ cambios, guardando, alDescartar }: { cambios: number; gu
 // ---------- Parámetros contables (contador y super administrador) ----------
 
 const ETIQUETAS_CREDITO: Record<keyof Config['credito'], string> = {
-  tasa_mensual: 'Interés mensual del crédito (%)', pie_porcentaje: 'Pie habitual (% del precio)', n_cuotas: 'Número de cuotas habitual',
+  tasa_mensual: 'Interés mensual del crédito (%)', pie_monto: 'Pie habitual ($)', n_cuotas: 'Número de cuotas habitual',
   dias_validez_cotizacion: 'Vigencia de las cotizaciones (días)', tasa_mora_mensual: 'Interés por mora mensual (%)', dias_plazo_carta: 'Plazo en las cartas de cobranza (días)',
 };
 
@@ -208,7 +307,9 @@ function ParametrosCredito() {
   );
   const [credito, setCredito] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
-  const cambios = listarCambios(inicial, credito, ETIQUETAS_CREDITO).filter((c) => Number(c.antes) !== Number(c.despues));
+  // (Los montos en pesos se comparan ya formateados: "$3.000.000" no es un número, así que siempre cuentan si cambiaron.)
+  const cambios = listarCambios(inicial, credito, ETIQUETAS_CREDITO, { pie_monto: (v) => pesos(Number(v)) })
+    .filter((c) => Number(c.antes) !== Number(c.despues));
 
   async function guardar(e: FormEvent) {
     e.preventDefault();
@@ -246,7 +347,9 @@ function ParametrosCredito() {
         <p className="mb-3 text-sm text-stone-600">Son los valores con que parten los formularios; en cada cotización o venta se pueden cambiar.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {campo('tasa_mensual', 'Interés sobre saldo insoluto, cuota fija.', { max: 15 })}
-          {campo('pie_porcentaje', 'Se propone redondeado a $100.000.', { max: 100 })}
+          <Campo etiqueta={ETIQUETAS_CREDITO.pie_monto} ayuda="Monto en pesos que se propone como pie. Si el precio es menor, el pie es el precio.">
+            <EntradaMonto valor={Number(credito.pie_monto) || null} alCambiar={(v) => setCredito({ ...credito, pie_monto: String(v ?? 0) })} />
+          </Campo>
           {campo('n_cuotas', 'Cuotas mensuales.', { step: '1', min: 1, max: 360 })}
           {campo('dias_validez_cotizacion', 'Plazo de validez que se imprime.', { step: '1', min: 1, max: 365 })}
         </div>
@@ -478,6 +581,7 @@ function Registro() {
 
 function MiCuenta() {
   const { usuario, salir, puede } = useSesion();
+  const config = useConfig();
   const avisos = useAvisos();
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
@@ -503,8 +607,11 @@ function MiCuenta() {
   }
 
   const conDatos = puede('datos_personales');
+  // El dueño designado representante legal carga su propia firma.
+  const esRepresentante = !puede('empresa') && config.empresa.representante_cuenta === usuario?.usuario;
   const columna = (
     <div className="space-y-4">
+      {esRepresentante && <FirmaRepresentante />}
       {puede('avisos_visitas') && <AvisosEnEsteEquipo />}
       <Tarjeta titulo="Mi cuenta">
         <div className="text-sm font-medium text-stone-900">{usuario?.nombre}</div>

@@ -68,6 +68,8 @@ export const ACCIONES_REGISTRO: Record<string, string> = {
   parcelas_masivo: 'Cambio en bloque de parcelas',
   loteo_cargado: 'Plano del loteo cargado',
   datos_importados: 'Datos cargados desde el Excel',
+  datos_corregidos: 'Corrección automática de datos',
+  google_earth: 'Plano en Google Earth',
   datos_personales: 'Datos personales actualizados',
   venta_informada: 'Venta informada al contador',
   venta_informada_descartada: 'Venta informada no registrada',

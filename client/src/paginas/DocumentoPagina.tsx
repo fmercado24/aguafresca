@@ -27,6 +27,7 @@ function descargarWord(titulo: string, contenido: string) {
   .num { text-align: right; }
   .total td { font-weight: bold; }
   .firma { text-align: center; margin-top: 48pt; }
+  img.firma-digital { height: 60pt; }
   .salto-pagina { page-break-before: always; }
 </style></head>
 <body>${contenido}</body></html>`;

@@ -6,9 +6,15 @@ const encabezadoCarta = `
 <p style="text-align:right">{{empresa.ciudad}}, {{fecha_hoy}}</p>
 <p>Señor(a)<br><strong>{{cliente.nombre}}</strong><br>{{cliente.direccion}}, {{cliente.comuna}}<br><u>Presente</u></p>`;
 
+// {{firma}}: firma digital, nombre, cargo y RUT del representante legal, y la empresa.
 const firmaCarta = `
 <p>Sin otro particular, le saluda atentamente,</p>
-<p><br><br><strong>{{empresa.representante}}</strong><br>{{empresa.razon_social}}<br>{{empresa.telefono}} · {{empresa.email}}</p>`;
+{{firma}}
+<p>{{empresa.telefono}} · {{empresa.email}}</p>`;
+
+/** Pie de firma de las versiones anteriores de las cartas (para actualizar las plantillas ya guardadas). */
+export const FIRMA_CARTA_ANTERIOR = '<p><br /><br /><strong>{{empresa.representante}}</strong><br />{{empresa.razon_social}}<br />{{empresa.telefono}} · {{empresa.email}}</p>';
+export const FIRMA_CARTA_NUEVA = '{{firma}}<p>{{empresa.telefono}} · {{empresa.email}}</p>';
 
 const cartaRecordatorio = `${encabezadoCarta}
 <p><strong>Ref.: Recordatorio de pago — Parcela N° {{parcela.numero}}, {{proyecto.nombre}}</strong></p>

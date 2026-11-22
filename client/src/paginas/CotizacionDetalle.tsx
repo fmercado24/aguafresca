@@ -4,6 +4,7 @@ import { Ban, BellRing, CircleCheck, HandCoins, MessageCircle, Pencil, Printer, 
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
 import { Membrete } from '../componentes/Membrete';
+import { PieFirma } from '../componentes/PieFirma';
 import { fecha, fechaHoraRegistro, fechaLarga, formatearRut, numero, pesos, porcentaje } from '../formato';
 import type { CotizacionDetalle } from '../tipos';
 import { AreaTexto, Boton, Carga, Casilla, Campo, Encabezado, EnlaceBoton, InsigniaCotizacion, Modal } from '../ui';
@@ -205,7 +206,7 @@ function Detalle({ id }: { id: number }) {
                   {fila('Precio de venta', pesos(q.precio), true)}
                   {contado ? fila('Forma de pago', 'Al contado') : (
                     <>
-                      {fila(`Pie (${numero((q.pie / q.precio) * 100, 1)} % del precio)`, pesos(q.pie))}
+                      {fila('Pie', pesos(q.pie))}
                       {fila('Saldo de precio a crédito', pesos(s.monto_financiado))}
                       {fila('Interés', s.tasa_mensual > 0 ? `${porcentaje(s.tasa_mensual)} mensual (${porcentaje(s.tasa_anual)} anual)` : 'Sin interés')}
                       {fila(`${cuotasIguales} cuotas mensuales de`, pesos(s.valor_cuota), true)}
@@ -222,11 +223,10 @@ function Detalle({ id }: { id: number }) {
                 Cotización válida hasta el <strong>{fechaLarga(q.valida_hasta)}</strong>, sujeta a la disponibilidad de la parcela a la fecha de firma de la promesa de compraventa.
               </p>
 
-              <div className="mt-10 text-sm">
-                <div className="font-medium">{q.usuario ?? empresa.representante}</div>
-                <div>{empresa.razon_social}</div>
-                <div className="text-stone-600">{[empresa.telefono, empresa.email].filter(Boolean).join(' · ')}</div>
-              </div>
+              <PieFirma
+                className="mt-10"
+                extra={<div className="text-xs text-stone-600">{[empresa.telefono, empresa.email].filter(Boolean).join(' · ')}{q.usuario ? <><br />Atendido por {q.usuario}</> : null}</div>}
+              />
 
               {s.filas.length > 0 && (
                 <div className="mt-8 break-before-page">

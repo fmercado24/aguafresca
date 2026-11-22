@@ -6,7 +6,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Link, type LinkProps } from 'react-router';
 import {
-  ArrowLeft, BadgeCheck, Ban, CircleAlert, CircleCheck, CircleDashed, CircleX, Clock, Hourglass, LoaderCircle,
+  ArrowDownUp, ArrowLeft, BadgeCheck, Ban, CalendarClock, CircleAlert, CircleCheck, CircleDashed, CircleX, Clock, Hourglass, LoaderCircle,
   Search, TriangleAlert, X,
 } from 'lucide-react';
 import { analizarTelefono, errorTelefono, formatearRut, miles, rutValido } from './formato';
@@ -25,7 +25,7 @@ const VARIANTES: Record<Variante, string> = {
   peligro: 'bg-red-600 text-white shadow-xs hover:bg-red-700 active:bg-red-800',
 };
 
-const claseBoton = (variante: Variante, chico?: boolean) =>
+export const claseBoton = (variante: Variante, chico?: boolean) =>
   `inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-colors
    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-500
    disabled:cursor-not-allowed disabled:opacity-50 ${chico ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-2 text-sm'} ${VARIANTES[variante]}`;
@@ -453,6 +453,35 @@ export const ESTADOS_PARCELA: Record<EstadoParcela, { etiqueta: string; tono: ke
   bloqueada: { etiqueta: 'No disponible', tono: 'gris', icono: Ban },
 };
 
+// ---------- Orden de los listados ----------
+
+/** Orden elegido para un listado; se recuerda en este equipo. */
+export function useOrden<T extends string>(clave: string, opciones: readonly T[], inicial: T) {
+  const [orden, setOrden] = useState<T>(() => {
+    const guardado = localStorage.getItem(`orden:${clave}`) as T | null;
+    return guardado && opciones.includes(guardado) ? guardado : inicial;
+  });
+  const cambiar = (v: T) => {
+    setOrden(v);
+    localStorage.setItem(`orden:${clave}`, v);
+  };
+  return [orden, cambiar] as const;
+}
+
+export function SelectorOrden<T extends string>({ valor, alCambiar, opciones }: {
+  valor: T; alCambiar: (v: T) => void; opciones: { id: T; etiqueta: string }[];
+}) {
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-stone-600">
+      <ArrowDownUp className="size-3.5 shrink-0" aria-hidden />
+      <span className="sr-only">Ordenar por</span>
+      <Selector value={valor} onChange={(e) => alCambiar(e.target.value as T)} className="!w-auto !rounded-full !py-1 !text-xs">
+        {opciones.map((o) => <option key={o.id} value={o.id}>{o.etiqueta}</option>)}
+      </Selector>
+    </label>
+  );
+}
+
 export function InsigniaParcela({ estado }: { estado: EstadoParcela }) {
   const e = ESTADOS_PARCELA[estado];
   return <Insignia tono={e.tono} icono={e.icono}>{e.etiqueta}</Insignia>;
@@ -462,6 +491,7 @@ export function InsigniaCuota({ estado, dias }: { estado: EstadoCuota; dias?: nu
   if (estado === 'pagada') return <Insignia tono="verde" icono={CircleCheck}>Pagada</Insignia>;
   if (estado === 'atrasada') return <Insignia tono="rojo" icono={TriangleAlert}>{dias ? `Atrasada · ${dias} d` : 'Atrasada'}</Insignia>;
   if (estado === 'parcial') return <Insignia tono="ambar" icono={CircleDashed}>Abono parcial</Insignia>;
+  if (estado === 'aplazada') return <Insignia tono="azul" icono={CalendarClock}>Aplazada</Insignia>;
   return <Insignia icono={Clock}>Por vencer</Insignia>;
 }
 

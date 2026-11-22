@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { CalendarClock, CircleAlert, Plus, RotateCcw, Save, Scale, Trash2, TriangleAlert, Wand2 } from 'lucide-react';
+import { CalendarClock, CalendarX2, CircleAlert, Plus, RotateCcw, Save, Scale, Trash2, TriangleAlert, Wand2 } from 'lucide-react';
 import { api, mensajeDe, useDatos } from '../api';
 import { useAvisos, useSesion } from '../contexto';
 import { fecha, pesos, plural, porcentaje, sumarMeses } from '../formato';
-import type { Simulacion, VentaDetalle } from '../tipos';
+import type { Aplazamiento, Simulacion, VentaDetalle } from '../tipos';
 import {
   AreaTexto, Boton, Campo, Cargando, Encabezado, Entrada, EntradaMonto, ErrorCarga, Modal, Selector, Tarjeta, Vacio, num, td, th, EntradaEntero, EntradaDecimal,
 } from '../ui';
@@ -30,6 +30,16 @@ interface Estado {
 }
 
 const NUEVA = 100_000;
+
+/** Cuota aplazada: monto $0; el interés del mes se suma al capital (amortización negativa). */
+const esAplazada = (f: Fila) => f.interes > 0 && f.amortizacion === -f.interes;
+
+/** Monto habitual de las cuotas (el más repetido, sin contar las aplazadas). */
+function montoRegular(filas: Fila[]) {
+  const cuenta = new Map<number, number>();
+  for (const f of filas) { const m = f.interes + f.amortizacion; if (m > 0) cuenta.set(m, (cuenta.get(m) ?? 0) + 1); }
+  return [...cuenta].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? 0;
+}
 
 function estadoDe(d: VentaDetalle): Estado {
   const pie = d.cuotas.find((c) => c.tipo === 'pie');
@@ -118,7 +128,7 @@ function Formulario({ d }: { d: VentaDetalle }) {
   const advertencias: ReactNode[] = [];
   if (e.pie > e.precio) errores.push('El pie no puede ser mayor que el precio de venta.');
   if (c.financiado > 0 && e.filas.length === 0) errores.push('Hay saldo a crédito: la tabla debe tener al menos una cuota.');
-  const sinMonto = e.filas.map((f, i) => (f.interes + f.amortizacion <= 0 ? i + 1 : 0)).filter(Boolean);
+  const sinMonto = e.filas.map((f, i) => (f.interes + f.amortizacion <= 0 && !esAplazada(f) ? i + 1 : 0)).filter(Boolean);
   if (sinMonto.length) errores.push(`Cuotas con monto $0: ${sinMonto.join(', ')}. Elimínelas o asígneles un monto.`);
   const sinFecha = e.filas.map((f, i) => (!f.fecha ? i + 1 : 0)).filter(Boolean);
   if (sinFecha.length) errores.push(`Cuotas sin fecha de vencimiento: ${sinFecha.join(', ')}.`);
@@ -147,6 +157,18 @@ function Formulario({ d }: { d: VentaDetalle }) {
     const ultima = e.filas.at(-1);
     const nuevaFecha = ultima?.fecha ? sumarMeses(ultima.fecha, 1) : sumarMeses(e.pie > 0 ? e.fechaPie : d.venta.fecha, 1);
     setE((x) => ({ ...x, filas: [...x.filas, { clave: siguiente.current++, fecha: nuevaFecha, interes: 0, amortizacion: Math.max(0, c.saldoFinal) }] }));
+  }
+
+  // La última cuota se cobra completa (el monto habitual): amortiza lo que queda y el resto es interés.
+  function cerrarConCuotaCompleta() {
+    const ultima = e.filas.at(-1);
+    const regular = montoRegular(e.filas);
+    if (!ultima || !regular) return;
+    const saldoAntes = c.financiado - e.filas.slice(0, -1).reduce((s, f) => s + f.amortizacion, 0);
+    if (saldoAntes <= 0) return avisos.error('Antes de la última cuota ya no queda capital: quite la última cuota.');
+    if (saldoAntes > regular) return avisos.error(`La última cuota no alcanza: quedan ${pesos(saldoAntes)} de capital. Agregue cuotas al final.`);
+    cambiarFila(ultima.clave, { amortizacion: saldoAntes, interes: regular - saldoAntes });
+    avisos.ok(`La cuota ${e.filas.length} quedó completa (${pesos(regular)}) y el saldo cierra en $0.`);
   }
 
   function cerrarSaldo() {
@@ -222,6 +244,7 @@ function Formulario({ d }: { d: VentaDetalle }) {
               <>
                 <Boton chico variante="secundario" icono={Plus} onClick={agregarCuota}>Agregar cuota al final</Boton>
                 <Boton chico variante="secundario" icono={Scale} disabled={c.saldoFinal === 0 || !e.filas.length} onClick={cerrarSaldo}>Cerrar saldo en $0</Boton>
+                <Boton chico variante="secundario" icono={Scale} disabled={!e.filas.length} onClick={cerrarConCuotaCompleta}>Última cuota completa</Boton>
               </>
             }
           >
@@ -244,9 +267,10 @@ function Formulario({ d }: { d: VentaDetalle }) {
                   <tbody>
                     {e.filas.map((f, i) => {
                       const nueva = !porClave.has(f.clave);
+                      const aplazada = esAplazada(f);
                       const pagadoOriginal = d.cuotas.find((q) => q.tipo === 'cuota' && q.numero === f.clave)?.pagado ?? 0;
                       return (
-                        <tr key={f.clave} className={nueva ? 'bg-green-50/60' : ''}>
+                        <tr key={f.clave} className={nueva ? 'bg-green-50/60' : aplazada ? 'bg-blue-50/50' : ''}>
                           <td className={`${td} py-1.5 tabular-nums`}>
                             {i + 1}
                             {nueva && <div className="text-[10px] font-medium uppercase text-green-800">nueva</div>}
@@ -260,12 +284,24 @@ function Formulario({ d }: { d: VentaDetalle }) {
                             />
                           </td>
                           <td className={`${td} py-1.5`}>
-                            <EntradaMonto aria-label={`Interés cuota ${i + 1}`} valor={f.interes} alCambiar={(v) => cambiarFila(f.clave, { interes: v ?? 0 })} className={`!w-36 !py-1 text-right ${marcar(f, 'interes')}`} />
+                            <EntradaMonto
+                              aria-label={`Interés cuota ${i + 1}`} valor={f.interes}
+                              alCambiar={(v) => cambiarFila(f.clave, aplazada ? { interes: v ?? 0, amortizacion: -(v ?? 0) } : { interes: v ?? 0 })}
+                              className={`!w-36 !py-1 text-right ${marcar(f, 'interes')}`}
+                            />
                           </td>
                           <td className={`${td} py-1.5`}>
-                            <EntradaMonto aria-label={`Amortización cuota ${i + 1}`} valor={f.amortizacion} alCambiar={(v) => cambiarFila(f.clave, { amortizacion: v ?? 0 })} className={`!w-36 !py-1 text-right ${marcar(f, 'amortizacion')}`} />
+                            {aplazada ? (
+                              <div className="w-36 text-right text-sm leading-tight tabular-nums text-blue-900" title="El interés de la cuota aplazada se suma a la deuda de capital">
+                                −{pesos(f.interes)}<div className="text-[11px] text-blue-800/80">suma a la deuda</div>
+                              </div>
+                            ) : (
+                              <EntradaMonto aria-label={`Amortización cuota ${i + 1}`} valor={f.amortizacion} alCambiar={(v) => cambiarFila(f.clave, { amortizacion: v ?? 0 })} className={`!w-36 !py-1 text-right ${marcar(f, 'amortizacion')}`} />
+                            )}
                           </td>
-                          <td className={`${td} ${num} whitespace-nowrap py-1.5 font-medium`}>{pesos(f.interes + f.amortizacion)}</td>
+                          <td className={`${td} ${num} whitespace-nowrap py-1.5 font-medium`}>
+                            {aplazada ? <span className="text-blue-900">$0 · aplazada</span> : pesos(f.interes + f.amortizacion)}
+                          </td>
                           <td className={`${td} ${num} whitespace-nowrap py-1.5 ${c.saldos[i] < 0 ? 'text-red-700' : ''}`}>{pesos(c.saldos[i])}</td>
                           <td className={`${td} py-1.5 text-right`}>
                             <button
@@ -301,6 +337,7 @@ function Formulario({ d }: { d: VentaDetalle }) {
         <div className="order-2 grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:sticky 2xl:top-6 2xl:grid-cols-1">
           <div className="md:col-span-2 2xl:col-span-1"><Validacion errores={errores} advertencias={advertencias} /></div>
           <HerramientaRecalcular e={e} setE={setE} financiado={c.financiado} nuevaClave={() => siguiente.current++} />
+          <HerramientaAplazar e={e} setE={setE} nuevaClave={() => siguiente.current++} />
           <HerramientaVencimientos e={e} setE={setE} />
         </div>
       </div>
@@ -411,6 +448,56 @@ function HerramientaRecalcular({ e, setE, financiado, nuevaClave }: { e: Estado;
         </div>
         <p className="text-sm text-stone-600">Capital pendiente: <strong className="tabular-nums text-stone-900">{pesos(capitalPendiente)}</strong></p>
         <Boton type="submit" variante="secundario" icono={Wand2} cargando={calculando} className="w-full">Recalcular</Boton>
+      </form>
+    </Tarjeta>
+  );
+}
+
+/** Aplaza meses desde una cuota: quedan en $0, se carga solo el interés (aumenta la deuda) y las siguientes se corren. */
+function HerramientaAplazar({ e, setE, nuevaClave }: { e: Estado; setE: (x: Estado) => void; nuevaClave: () => number }) {
+  const avisos = useAvisos();
+  const [desde, setDesde] = useState(1);
+  const [meses, setMeses] = useState('1');
+  const [calculando, setCalculando] = useState(false);
+  const desdeValido = Math.min(Math.max(1, desde), Math.max(1, e.filas.length));
+
+  async function aplazar(ev: FormEvent) {
+    ev.preventDefault();
+    const n = Number(meses);
+    if (!(n >= 1 && n <= 36)) return avisos.error('Indique de 1 a 36 meses');
+    setCalculando(true);
+    try {
+      const tabla = {
+        precio: e.precio, pie: e.pie, fecha_pie: e.pie > 0 ? e.fechaPie : null, tasa_mensual: Number(e.tasa) || 0,
+        cuotas: e.filas.map((f) => ({ fecha_vencimiento: f.fecha, interes: f.interes, amortizacion: f.amortizacion })),
+      };
+      const r = await api.post<Aplazamiento>('/tabla/aplazar', { tabla, desde: desdeValido, meses: n });
+      const k = desdeValido - 1;
+      const movidas = e.filas.slice(k);
+      const nuevas = r.cuotas.slice(k).map((c, j) => ({
+        clave: j < n ? nuevaClave() : movidas[j - n]?.clave ?? nuevaClave(),
+        fecha: c.fecha_vencimiento, interes: c.interes, amortizacion: c.amortizacion,
+      }));
+      setE({ ...e, filas: [...e.filas.slice(0, k), ...nuevas] });
+      avisos.ok(`${n === 1 ? 'Cuota aplazada' : `${n} cuotas aplazadas`}: la tabla queda de ${r.cuotas_despues} cuotas. Revise y guarde.`);
+    } catch (err) {
+      avisos.error(mensajeDe(err));
+    } finally {
+      setCalculando(false);
+    }
+  }
+
+  return (
+    <Tarjeta titulo={<span className="flex items-center gap-2"><CalendarX2 className="size-4 text-marca-700" />Aplazar cuotas</span>}>
+      <form onSubmit={aplazar} className="space-y-3">
+        <p className="text-xs text-stone-500">
+          Esos meses la cuota queda en $0: se carga solo el interés, que aumenta la deuda de capital. Las cuotas siguientes se corren con su mismo monto.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Campo etiqueta="Desde la cuota"><EntradaEntero valor={String(desdeValido)} alCambiar={(v) => setDesde(Number(v) || 1)} /></Campo>
+          <Campo etiqueta="Meses"><EntradaEntero valor={meses} alCambiar={setMeses} /></Campo>
+        </div>
+        <Boton type="submit" variante="secundario" icono={CalendarX2} cargando={calculando} disabled={!e.filas.length} className="w-full">Aplazar</Boton>
       </form>
     </Tarjeta>
   );
