@@ -6,6 +6,7 @@ import { useAvisos, useConfig, useSesion } from '../contexto';
 import { coordenadas, enlaceGoogleMaps } from '../componentes/MapaParcelas';
 import { correoValido, diaSemana, errorTelefono, fechaConDia, hora, mesLargo, plural, sumarDias, sumarMeses } from '../formato';
 import type { ClienteResumen, Cuenta, EstadoVisita, Parcela, Visita } from '../tipos';
+import { enlaceWhatsApp } from '../whatsapp';
 import {
   AreaTexto, Boton, Campo, Encabezado, Entrada, ESTADOS_VISITA, InsigniaVisita, Modal, Selector, Tarjeta, Vacio, EntradaTelefono,
 } from '../ui';
@@ -342,7 +343,7 @@ export function Visitas() {
                       <div className="mt-2 flex flex-wrap gap-3 text-xs">
                         {v.telefono && <a href={`tel:${v.telefono.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-medium text-marca-700 hover:underline"><Phone className="size-3.5" />{v.telefono}</a>}
                         {telefono.length >= 9 && (
-                          <a href={`https://wa.me/${telefono}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-marca-700 hover:underline"><MessageCircle className="size-3.5" />WhatsApp</a>
+                          <a href={enlaceWhatsApp(telefono)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-marca-700 hover:underline"><MessageCircle className="size-3.5" />WhatsApp</a>
                         )}
                         {ubicacion && (
                           <a href={enlaceGoogleMaps(ubicacion)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-marca-700 hover:underline"><MapPin className="size-3.5" />Cómo llegar</a>

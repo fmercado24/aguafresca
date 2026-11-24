@@ -254,7 +254,7 @@ function ComoFuncionaWhatsApp() {
       <p className="mt-3 text-sm text-stone-700">Para que funcione, en el equipo desde donde se envía:</p>
       <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-stone-700">
         <li><strong>Computador:</strong> tener abierta la sesión de <strong>WhatsApp Web</strong> (web.whatsapp.com) o la aplicación WhatsApp de escritorio, vinculada al celular de la empresa.</li>
-        <li><strong>Celular:</strong> tener WhatsApp instalado; el enlace abre la aplicación directamente.</li>
+        <li><strong>Celular:</strong> en Android se abre <strong>WhatsApp Business</strong> (si no está instalado, el WhatsApp normal); en iPhone, el WhatsApp que elija el celular.</li>
         <li>El celular del cliente debe estar en su ficha (por ejemplo +56 9 1234 5678).</li>
       </ul>
       <p className="mt-3 text-xs text-stone-500">

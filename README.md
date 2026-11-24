@@ -232,7 +232,10 @@ Para que funcione:
 
 - En el **computador**: tener abierta la sesión de **WhatsApp Web** (web.whatsapp.com) o la aplicación de escritorio de WhatsApp,
   vinculada al celular (en el celular: WhatsApp → Dispositivos vinculados → Vincular un dispositivo, y escanear el código).
-- En el **celular**: tener WhatsApp instalado; el enlace abre la aplicación directamente.
+- En el **celular**: tener WhatsApp instalado. En **Android** todos los botones de WhatsApp del sistema (carta, cotización,
+  ficha del cliente, visitas) abren **WhatsApp Business** (`client/src/whatsapp.ts` arma un enlace `intent://` al paquete
+  `com.whatsapp.w4b`); si no está instalado, el navegador usa el enlace normal `wa.me`, que abre el WhatsApp que haya.
+  En **iPhone** se usa siempre `wa.me`, y lo abre el WhatsApp que elija el celular.
 - El cliente debe tener su **celular en la ficha** (por ejemplo `+56 9 1234 5678`; se acepta también sin `+56`).
 
 El mensaje sale desde la cuenta abierta en ese equipo: conviene usar un número de la empresa (la aplicación gratuita

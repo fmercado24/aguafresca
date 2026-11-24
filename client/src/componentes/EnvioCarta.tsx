@@ -5,6 +5,7 @@ import { useAvisos, useSesion } from '../contexto';
 import { fechaHoraRegistro } from '../formato';
 import type { Canales, CanalEnvio, Documento, Envio, EstadoEnvio, ResultadoEnvio } from '../tipos';
 import { Boton, Insignia, Modal, Tarjeta } from '../ui';
+import { paraEsteEquipo } from '../whatsapp';
 
 // Envío de una carta de cobranza ya emitida al deudor, por correo o WhatsApp, con confirmación,
 // y el registro de los envíos anteriores de esa carta.
@@ -63,9 +64,10 @@ export function EnvioCarta({ d }: { d: Documento & { cliente_telefono?: string |
       if (r.estado === 'manual' && r.enlace) {
         // Si el navegador bloquea la ventana nueva, queda el botón para abrirla.
         // (Con 'noopener' window.open devuelve siempre null: por eso se corta el vínculo después.)
-        const ventana = window.open(r.enlace, '_blank');
+        const destino = paraEsteEquipo(r.enlace);
+        const ventana = window.open(destino, '_blank');
         if (ventana) ventana.opener = null;
-        else setEnlace(r.enlace);
+        else setEnlace(destino);
       } else if (r.estado === 'enviado') avisos.ok(`Carta enviada por ${nombreCanal(canal).toLowerCase()}`);
       else if (r.estado === 'simulado') avisos.ok('Envío registrado en modo de prueba (no salió)');
       else avisos.error(r.detalle);

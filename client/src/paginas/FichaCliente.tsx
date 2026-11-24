@@ -8,6 +8,7 @@ import { FormularioGestion, TIPOS_GESTION } from '../componentes/FormularioGesti
 import { Membrete } from '../componentes/Membrete';
 import { MEDIOS_PAGO, fecha, fechaRegistro, formatearRut, hora, pesos, plural } from '../formato';
 import type { FichaCliente, Gestion } from '../tipos';
+import { enlaceWhatsApp } from '../whatsapp';
 import {
   Boton, Carga, Dato, Encabezado, EnlaceBoton, Insignia, InsigniaCotizacion, InsigniaVenta, InsigniaVisita, Par,
   Pestanas, Tabla, Tarjeta, Vacio, num, td, th, useNombreArchivo,
@@ -75,7 +76,7 @@ function Ficha({ id }: { id: number }) {
                     <span>{c.rut ? formatearRut(c.rut) : 'Sin RUT registrado'}</span>
                     {c.telefono && <a href={`tel:${c.telefono.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 text-marca-700 hover:underline"><Phone className="size-3.5" />{c.telefono}</a>}
                     {c.telefono && soloDigitos(c.telefono).length >= 9 && (
-                      <a href={`https://wa.me/${soloDigitos(c.telefono)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-marca-700 hover:underline"><MessageCircle className="size-3.5" />WhatsApp</a>
+                      <a href={enlaceWhatsApp(c.telefono)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-marca-700 hover:underline"><MessageCircle className="size-3.5" />WhatsApp</a>
                     )}
                     {c.email && <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1 text-marca-700 hover:underline"><Mail className="size-3.5" />{c.email}</a>}
                   </span>

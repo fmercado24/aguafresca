@@ -7,6 +7,7 @@ import { Membrete } from '../componentes/Membrete';
 import { PieFirma } from '../componentes/PieFirma';
 import { fecha, fechaHoraRegistro, fechaLarga, formatearRut, numero, pesos, porcentaje } from '../formato';
 import type { CotizacionDetalle } from '../tipos';
+import { enlaceWhatsApp } from '../whatsapp';
 import { AreaTexto, Boton, Carga, Casilla, Campo, Encabezado, EnlaceBoton, InsigniaCotizacion, Modal, useNombreArchivo } from '../ui';
 
 // ---------- Aviso de venta al administrador (usuario) ----------
@@ -163,7 +164,7 @@ function Detalle({ id }: { id: number }) {
             >
               <Boton icono={Printer} onClick={() => window.print()}>Imprimir o guardar PDF</Boton>
               <a
-                href={`https://wa.me/${telefono.length >= 9 ? telefono : ''}?text=${encodeURIComponent(resumen)}`}
+                href={enlaceWhatsApp(telefono.length >= 9 ? telefono : '', resumen)}
                 target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 py-2 text-sm font-medium text-stone-800 shadow-xs hover:bg-stone-50"
               >
