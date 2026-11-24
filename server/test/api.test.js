@@ -1091,6 +1091,16 @@ test('firma del representante legal, pie habitual en pesos y plano para Google E
   assert.doesNotMatch(pie, /RUT|Rosa Ríos|Representante|@/);
   const doc = ok(await abogado('POST', '/documentos', { tipo: 'carta_cobranza', titulo: 'Carta', venta_id: venta.id, contenido: carta.contenido }), 201).id;
   assert.match(ok(await abogado('GET', `/documentos/${doc}`)).contenido, /class="firma-digital"/, 'la firma queda en la carta guardada');
+  // El correo de la carta lleva arriba el logo del fundo; el logo y la firma van como imágenes adjuntas.
+  const { correoDeCarta } = await import('../lib/envios.js');
+  const correo = correoDeCarta({ titulo: 'Carta', contenido: carta.contenido }, { razon_social: 'Agua Fresca SpA' }, { nombre: 'Fundo Entre Ríos' });
+  assert.deepEqual(correo.adjuntos.map((a) => a.cid), ['logo@aguafresca', 'firma-1@aguafresca']);
+  assert.equal(correo.adjuntos[0].contentType, 'image/png');
+  assert.ok(correo.adjuntos[0].content.length > 1000, 'el logo es el archivo real');
+  assert.ok(correo.html.indexOf('cid:logo@aguafresca') < correo.html.indexOf('Agua Fresca SpA'), 'el logo va en el encabezado');
+  assert.match(correo.html, /<img src="cid:logo@aguafresca" alt="Fundo Entre Ríos" width="\d+" height="60"/);
+  assert.match(correo.html, /src="cid:firma-1@aguafresca"/);
+  assert.doesNotMatch(correo.html, /src="data:/);
   ok(await admin('DELETE', '/config/firma'));
   assert.equal(ok(await contador('GET', '/config')).firma, null);
 

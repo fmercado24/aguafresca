@@ -1,6 +1,9 @@
 // Envío de cartas de cobranza: por correo (a mano desde una carta emitida, o programado cada día según los días
 // de atraso) y por WhatsApp (siempre a mano: se abre WhatsApp con el texto listo y la persona lo envía).
 // Cada envío queda registrado, y los que salen, en la ficha del deudor.
+import fs from 'node:fs';
+import path from 'node:path';
+import { config } from '../config.js';
 import { db, insertar } from '../db.js';
 import { confeccionar } from './plantillas.js';
 import { leerCanales, enviarCorreo, telefonoWhatsApp, correoListo } from './canales.js';
@@ -34,17 +37,43 @@ function asuntoDe(doc) {
   return ref ? ref.replace(/^Ref\.?:\s*/i, '') : doc.titulo;
 }
 
-function correoDeCarta(doc, empresa) {
-  // Los programas de correo no muestran imágenes incrustadas como "data:": la firma va como imagen adjunta.
+// Logo del fundo para el encabezado de los correos (el mismo de la aplicación y de los documentos impresos).
+const RUTA_LOGO = path.join(config.raiz, 'client', 'public', 'logo.png');
+let logo;
+function logoCorreo() {
+  if (logo === undefined) {
+    try {
+      const datos = fs.readFileSync(RUTA_LOGO);
+      // Alto y ancho del PNG (cabecera IHDR), para dibujarlo sin deformarlo.
+      logo = { datos, ancho: datos.readUInt32BE(16), alto: datos.readUInt32BE(20) };
+    } catch {
+      logo = null;
+    }
+  }
+  return logo;
+}
+
+const escaparHtml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+export function correoDeCarta(doc, empresa, proyecto = {}) {
+  // Los programas de correo no muestran imágenes incrustadas como "data:": el logo y la firma van como imágenes adjuntas.
   const adjuntos = [];
   const contenido = String(doc.contenido).replace(/src="data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)"/g, (_, tipo, datos) => {
     const cid = `firma-${adjuntos.length + 1}@aguafresca`;
     adjuntos.push({ filename: `firma.${tipo === 'image/png' ? 'png' : 'jpg'}`, content: Buffer.from(datos, 'base64'), contentType: tipo, cid });
     return `src="cid:${cid}"`;
   });
+  const l = logoCorreo();
+  let imagenLogo = '';
+  if (l) {
+    adjuntos.unshift({ filename: 'logo.png', content: l.datos, contentType: 'image/png', cid: 'logo@aguafresca' });
+    const alto = 60;
+    const ancho = Math.round((alto * l.ancho) / l.alto);
+    imagenLogo = `<img src="cid:logo@aguafresca" alt="${escaparHtml(proyecto.nombre || 'Fundo Entre Ríos')}" width="${ancho}" height="${alto}" style="display:block;border:0;margin-bottom:12px">`;
+  }
   const html = `<!doctype html><html><body style="margin:0;background:#f4f4f2;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#1c1917">
 <div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #e7e5e4;border-radius:8px;padding:28px 32px;font-size:14px;line-height:1.55">
-<div style="font-weight:bold;font-size:16px;margin-bottom:16px">${empresa.razon_social || ''}</div>
+<div style="border-bottom:2px solid #292524;padding-bottom:12px;margin-bottom:16px">${imagenLogo}<div style="font-weight:bold;font-size:16px">${escaparHtml(empresa.razon_social)}</div></div>
 <style>table.tabla-doc{border-collapse:collapse;width:100%;margin:8px 0}table.tabla-doc th,table.tabla-doc td{border:1px solid #d6d3d1;padding:4px 8px;font-size:13px}td.num,th.num{text-align:right}img.firma-digital{display:block;max-height:80px;max-width:240px;margin-top:12px}</style>
 ${contenido}
 </div></body></html>`;
@@ -77,7 +106,8 @@ export async function enviarDocumento(documentoId, canal, { usuarioId = null, au
     else if (!correoListo(canales)) Object.assign(r, { estado: 'error', detalle: 'El correo de envío no está configurado (Configuración → Envío de cartas)' });
     else {
       try {
-        const id = await enviarCorreo(canales, { para: r.destino, ...correoDeCarta(doc, leerConfiguracion().empresa) });
+        const { empresa, proyecto } = leerConfiguracion();
+        const id = await enviarCorreo(canales, { para: r.destino, ...correoDeCarta(doc, empresa, proyecto) });
         r.detalle = id ? `Aceptado por el servidor de correo (${id})` : 'Aceptado por el servidor de correo';
       } catch (e) {
         Object.assign(r, { estado: 'error', detalle: `No se pudo enviar el correo: ${e.message}` });

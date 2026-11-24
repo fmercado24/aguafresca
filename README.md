@@ -165,6 +165,10 @@ Los comprobantes de pago, las cotizaciones, el estado de cuenta impreso y las ca
 digital y, bajo ella, solo la leyenda **"Soc. de Inv. e Inmob. Agua Fresca SpA"** (sin nombre, RUT ni cargo del representante). La firma se carga en **Configuración → Empresa y
 proyecto → Firma digital** (o el dueño designado representante, en *Mi cuenta*): una foto o escaneo de la firma en papel blanco;
 el sistema quita el fondo. En las cartas va con la variable `{{firma}}`; al enviarlas por correo la firma viaja como imagen adjunta.
+Todos los documentos llevan en el encabezado el **logo del Fundo Entre Ríos** (`client/public/logo.png`) junto a los datos de la
+empresa: cotizaciones, comprobantes, estado de cuenta, ficha del cliente, cartas y promesas. En cartas y promesas el membrete viene
+marcado y se puede quitar con la casilla; va también en el Word (el logo y la firma se convierten a JPEG sobre blanco, porque
+Word para Mac pinta de negro la transparencia) y en el correo de las cartas (como imagen adjunta).
 Todos los documentos llevan arriba el lugar y la fecha: **"Punta Arenas, 24 de noviembre de 2026"** (en las cartas y promesas,
 con la variable `{{lugar_emision}}`). Al guardarlos como PDF el navegador propone el nombre del archivo según el documento:
 **"Cobranza - <cliente>"** (cartas, también al exportar a Word), **"Pago - <cliente>"** (comprobantes), "Cotización - …",
