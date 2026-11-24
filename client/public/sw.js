@@ -1,6 +1,6 @@
 // Service worker mínimo: permite instalar el sistema como aplicación y acelera la carga.
 // Los datos (/api) nunca se guardan en caché: siempre se consultan al servidor.
-const CACHE = 'aguafresca-v1';
+const CACHE = 'aguafresca-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -64,10 +64,11 @@ self.addEventListener('notificationclick', (evento) => {
 self.addEventListener('push', (evento) => {
   let aviso = {};
   try { aviso = evento.data ? evento.data.json() : {}; } catch { aviso = { titulo: evento.data?.text() }; }
-  evento.waitUntil(self.registration.showNotification(aviso.titulo || 'Fundo Entre Ríos', {
+  evento.waitUntil(self.registration.showNotification(aviso.titulo || 'Gestión Fundo Entre Ríos', {
     body: aviso.detalle || '',
-    icon: '/icono-192.png',
-    badge: '/icono-192.png',
+    icon: '/logo-192.png',
+    // Silueta para la barra de estado de Android (solo usa la transparencia).
+    badge: '/insignia-96.png',
     tag: aviso.id ? `aviso-${aviso.id}` : undefined,
     data: { enlace: aviso.enlace || '/' },
   }));

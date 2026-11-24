@@ -27,8 +27,8 @@ export function Ingreso() {
     <div className="flex min-h-dvh items-center justify-center bg-marca-800 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/icono.svg" alt="" className="mb-3 size-16 rounded-2xl" />
-          <h1 className="text-xl font-semibold text-white">Fundo Entre Ríos</h1>
+          <img src="/logo.png" alt="Fundo Entre Ríos" className="mb-4 w-64 rounded-2xl bg-white px-3 py-2 shadow-lg" />
+          <h1 className="text-xl font-semibold text-white">Gestión Fundo Entre Ríos</h1>
           <p className="text-sm text-marca-200">Agua Fresca SpA · Gestión de ventas y clientes</p>
         </div>
         <form onSubmit={enviar} className="space-y-4 rounded-2xl bg-white p-6 shadow-xl">

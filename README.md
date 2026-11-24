@@ -327,7 +327,12 @@ genera el calendario desde la fecha original y deja esas cuotas como pagadas.
 ## Instalar como app en el celular
 
 Abra la dirección del sistema en Chrome (Android) o Safari (iPhone) y elija **"Agregar a pantalla de inicio" / "Instalar aplicación"**.
-Queda con su ícono y se abre a pantalla completa. Es la misma aplicación y los mismos datos que en el computador.
+Queda con el logo del fundo y bajo el ícono dice **"Gestión"** (el nombre completo, "Gestión Fundo Entre Ríos", aparece al
+instalarla y en la lista de aplicaciones). Se abre a pantalla completa. Es la misma aplicación y los mismos datos que en el computador.
+
+Los íconos se generan desde el logo y están en `client/public/` (`logo-*.png`; `insignia-96.png` es la silueta para la barra de
+notificaciones de Android). En Android, la app ya instalada toma el ícono y el nombre nuevos sola en uno o dos días; en el iPhone
+hay que quitarla de la pantalla de inicio y volver a agregarla.
 
 La instalación como app requiere que el sistema esté publicado con **HTTPS**. Dentro de la red local (por ejemplo
 `http://192.168.1.20:3000`) funciona igual desde el navegador del celular, pero sin la opción de instalar ni los avisos con la app

@@ -16,7 +16,7 @@ const CLAVE_ULTIMO = 'af:ultimo-aviso-del-sistema';
 const soportaAvisosDelSistema = () => typeof window !== 'undefined' && 'Notification' in window;
 
 async function avisoDelSistema(a: Aviso) {
-  const opciones = { body: a.detalle, icon: '/icono.svg', tag: `aviso-${a.id}`, data: { enlace: a.enlace || '/' } };
+  const opciones = { body: a.detalle, icon: '/logo-192.png', tag: `aviso-${a.id}`, data: { enlace: a.enlace || '/' } };
   try {
     // En el celular (app instalada) los avisos se muestran a través del service worker.
     const registro = await navigator.serviceWorker?.getRegistration();

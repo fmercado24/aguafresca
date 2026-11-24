@@ -25,10 +25,10 @@ const BARRA_INFERIOR = ['/', '/parcelas', '/ventas', '/cobranza'];
 function Marca() {
   const config = useConfig();
   return (
-    <div className="flex items-center gap-2.5">
-      <img src="/icono.svg" alt="" className="size-9 rounded-lg" />
+    <div className="flex min-w-0 items-center gap-2.5">
+      <img src="/logo.png" alt={config.proyecto.nombre || 'Fundo Entre Ríos'} className="h-10 w-auto shrink-0 rounded-lg bg-white px-1 py-0.5" />
       <div className="min-w-0 leading-tight">
-        <div className="truncate text-sm font-semibold text-white">{config.proyecto.nombre}</div>
+        <div className="truncate text-sm font-semibold text-white">Gestión</div>
         <div className="truncate text-xs text-marca-200">{config.empresa.razon_social}</div>
       </div>
     </div>
