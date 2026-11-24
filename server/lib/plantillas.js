@@ -71,7 +71,7 @@ export const CATALOGO = [
     ['empresa.representante', 'Representante legal'],
     ['empresa.rut_representante', 'RUT del representante legal'],
     ['empresa.datos_bancarios', 'Datos para transferencia'],
-    ['firma', 'Pie de firma del representante legal, con su firma digital'],
+    ['firma', 'Firma digital con la leyenda “Soc. de Inv. e Inmob. Agua Fresca SpA” debajo'],
   ] },
   { grupo: 'Representante legal (de sus datos personales si es uno de los dueños)', variables: variablesDePersona('representante') },
   { grupo: 'Cuenta ldiaz (sus datos personales)', variables: variablesDePersona('ldiaz') },
@@ -172,7 +172,7 @@ export function valoresPara(ventaId) {
   }
   poner('empresa.rut', formatearRut(cfg.empresa.rut));
   poner('empresa.rut_representante', formatearRut(cfg.empresa.rut_representante));
-  v.firma = bloqueFirmaHtml(cfg.empresa);
+  v.firma = bloqueFirmaHtml();
   for (const k of ['nombre', 'ubicacion', 'inscripcion']) poner(`proyecto.${k}`, cfg.proyecto[k]);
 
   // Representante legal y dueños: se completan solos con lo que cada dueño ingresó en "Mis datos personales".

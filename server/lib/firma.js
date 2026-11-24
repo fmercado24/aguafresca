@@ -4,9 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
-import { leerSeccion, guardarSeccion } from './configuracion.js';
-import { representanteDe } from './datos-personales.js';
-import { formatearRut } from './rut.js';
+import { leerSeccion, guardarSeccion, LEYENDA_FIRMA } from './configuracion.js';
 import { ErrorApp } from './validar.js';
 
 const TIPOS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
@@ -45,19 +43,12 @@ export function quitarFirma() {
 const escapar = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 /**
- * Pie de firma en HTML para las cartas: la firma (si está cargada), el nombre del representante legal,
- * su cargo, su RUT y la empresa. La imagen va dentro del documento (data URL) para que quede fija en la
+ * Pie de firma en HTML para las cartas: la firma (si está cargada) y bajo ella solo la leyenda de la empresa
+ * ("Soc. de Inv. e Inmob. Agua Fresca SpA"). La imagen va dentro del documento (data URL) para que quede fija en la
  * carta emitida; al enviarla por correo se adjunta como imagen.
  */
-export function bloqueFirmaHtml(empresa) {
+export function bloqueFirmaHtml() {
   const f = leerFirma();
-  const rep = representanteDe(empresa);
   const imagen = f ? `<img class="firma-digital" src="data:${f.tipo};base64,${f.datos.toString('base64')}" alt="Firma" />` : '<br /><br />';
-  const lineas = [
-    rep.nombre_completo && `<strong>${escapar(rep.nombre_completo)}</strong>`,
-    'Representante legal',
-    rep.rut && `RUT ${escapar(formatearRut(rep.rut))}`,
-    escapar(empresa?.razon_social),
-  ].filter(Boolean);
-  return `<div class="pie-firma">${imagen}<p>${lineas.join('<br />')}</p></div>`;
+  return `<div class="pie-firma">${imagen}<p>${escapar(LEYENDA_FIRMA)}</p></div>`;
 }

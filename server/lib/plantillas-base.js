@@ -6,15 +6,14 @@ const encabezadoCarta = `
 <p style="text-align:right">{{lugar_emision}}, {{fecha_hoy}}</p>
 <p>Señor(a)<br><strong>{{cliente.nombre}}</strong><br>{{cliente.direccion}}, {{cliente.comuna}}<br><u>Presente</u></p>`;
 
-// {{firma}}: firma digital, nombre, cargo y RUT del representante legal, y la empresa.
+// {{firma}}: firma digital y, bajo ella, solo "Soc. de Inv. e Inmob. Agua Fresca SpA" (el teléfono y el correo van en el membrete).
 const firmaCarta = `
 <p>Sin otro particular, le saluda atentamente,</p>
-{{firma}}
-<p>{{empresa.telefono}} · {{empresa.email}}</p>`;
+{{firma}}`;
 
 /** Pie de firma de las versiones anteriores de las cartas (para actualizar las plantillas ya guardadas). */
 export const FIRMA_CARTA_ANTERIOR = '<p><br /><br /><strong>{{empresa.representante}}</strong><br />{{empresa.razon_social}}<br />{{empresa.telefono}} · {{empresa.email}}</p>';
-export const FIRMA_CARTA_NUEVA = '{{firma}}<p>{{empresa.telefono}} · {{empresa.email}}</p>';
+export const FIRMA_CARTA_NUEVA = '{{firma}}';
 
 /** Encabezado de lugar y fecha de las cartas: siempre "Punta Arenas, <fecha>". */
 export const FECHA_CARTA_NUEVA = '<p style="text-align:right">{{lugar_emision}}, {{fecha_hoy}}</p>';

@@ -224,10 +224,9 @@ function Detalle({ id }: { id: number }) {
                 Cotización válida hasta el <strong>{fechaLarga(q.valida_hasta)}</strong>, sujeta a la disponibilidad de la parcela a la fecha de firma de la promesa de compraventa.
               </p>
 
-              <PieFirma
-                className="mt-10"
-                extra={<div className="text-xs text-stone-600">{[empresa.telefono, empresa.email].filter(Boolean).join(' · ')}{q.usuario ? <><br />Atendido por {q.usuario}</> : null}</div>}
-              />
+              <PieFirma className="mt-10" />
+              {/* Quién cotizó: solo en pantalla, no en la cotización impresa */}
+              {q.usuario && <p className="mt-4 text-right text-xs text-stone-500 print:hidden">Cotización hecha por {q.usuario}</p>}
 
               {s.filas.length > 0 && (
                 <div className="mt-8 break-before-page">

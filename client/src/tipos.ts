@@ -129,6 +129,8 @@ export interface Config {
   plano: Plano | null;
   /** Lugar que encabeza los documentos junto a la fecha (siempre "Punta Arenas"). */
   lugar_emision: string;
+  /** Única leyenda bajo la firma en los documentos: "Soc. de Inv. e Inmob. Agua Fresca SpA". */
+  leyenda_firma: string;
   /** Firma del representante legal (imagen), si está cargada. */
   firma: { version: number } | null;
   hoy: string;

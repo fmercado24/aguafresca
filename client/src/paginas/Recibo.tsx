@@ -96,7 +96,9 @@ export function ReciboPagina() {
               {r.pago.observacion && <p className="mt-3 text-sm text-stone-700">Observación: {r.pago.observacion}</p>}
               <p className="mt-3 rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-900">{textoPendientes(r.pendientes)}</p>
 
-              <PieFirma className="mt-12" extra={r.pago.usuario && <div className="mt-1 text-xs text-stone-500">Registrado por {r.pago.usuario}</div>} />
+              <PieFirma className="mt-12" />
+              {/* Quién lo registró: solo en pantalla, no en el comprobante impreso */}
+              {r.pago.usuario && <p className="mt-4 text-right text-xs text-stone-500 print:hidden">Registrado en el sistema por {r.pago.usuario}</p>}
             </div>
           </>
         );

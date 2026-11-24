@@ -226,7 +226,7 @@ async function prepararFirma(archivo: File): Promise<string> {
 
 /** Carga o quita la firma del representante legal (va en comprobantes, cotizaciones, estados de cuenta y cartas). */
 export function FirmaRepresentante() {
-  const { firma, empresa } = useConfig();
+  const { firma, leyenda_firma } = useConfig();
   const { recargarConfig } = useSesion();
   const avisos = useAvisos();
   const [ocupado, setOcupado] = useState(false);
@@ -264,9 +264,9 @@ export function FirmaRepresentante() {
   return (
     <Tarjeta titulo={<span className="flex items-center gap-2"><Signature className="size-4 text-marca-700" />Firma digital del representante legal</span>}>
       <p className="text-sm text-stone-600">
-        Sale en el pie de firma de los comprobantes de pago, las cotizaciones, los estados de cuenta y las cartas de cobranza, junto al nombre y RUT de
-        {empresa.representante ? ` ${empresa.representante}` : 'l representante legal'}. Firme en una hoja blanca, sáquele una foto o escanéela y recórtela
-        dejando solo la firma: el fondo blanco se quita solo.
+        Sale en el pie de firma de los comprobantes de pago, las cotizaciones, los estados de cuenta y las cartas de cobranza, sobre la leyenda
+        “{leyenda_firma}” (sin nombre, RUT ni cargo). Firme en una hoja blanca, sáquele una foto o escanéela y
+        recórtela dejando solo la firma: el fondo blanco se quita solo.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-4">
         <div className="flex h-24 w-64 items-center justify-center rounded-lg border border-dashed border-stone-300 bg-white">

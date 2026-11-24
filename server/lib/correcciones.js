@@ -146,12 +146,30 @@ function lugarEnDocumentos() {
   return { corregidas, omitidas, titulo: 'Punta Arenas en el encabezado de los documentos' };
 }
 
+// 6. Bajo la firma de las cartas va solo la leyenda de la empresa: se quita la línea de teléfono y correo que la seguía.
+function soloLeyendaBajoLaFirma() {
+  const corregidas = [];
+  const contacto = /(\{\{\s*firma\s*\}\})\s*<p>\{\{\s*empresa\.telefono\s*\}\} · \{\{\s*empresa\.email\s*\}\}<\/p>/g;
+  for (const p of db.all("SELECT id, tipo, nombre, contenido FROM plantillas WHERE tipo = 'carta_cobranza' ORDER BY id")) {
+    const contenido = p.contenido.replace(contacto, '$1');
+    if (contenido === p.contenido) continue;
+    actualizar('plantillas', p.id, { contenido, actualizado_en: `${hoy()} 00:00:00` });
+    registrar(null, {
+      accion: 'plantilla_editada', entidad: 'plantilla', entidadId: p.id, anterior: p, detalle: p.nombre,
+      motivo: 'Corrección automática: bajo la firma va solo "Soc. de Inv. e Inmob. Agua Fresca SpA"',
+    });
+    corregidas.push(p.nombre);
+  }
+  return { corregidas, omitidas: [], titulo: 'Solo la leyenda de la empresa bajo la firma' };
+}
+
 const CORRECCIONES = [
   { id: '2026-11-21-repactadas', titulo: 'Créditos repactados con cuotas aplazadas', aplicar: repactadas },
   { id: '2026-11-21-ultima-cuota', titulo: 'Última cuota completa en los créditos vigentes', aplicar: ultimasCuotas },
   { id: '2026-11-21-plano-g-h', titulo: 'Ubicación de las manzanas G y H en el mapa', aplicar: planoGH },
   { id: '2026-11-21-firma-cartas', titulo: 'Pie de firma en las cartas de cobranza', aplicar: firmaEnCartas },
   { id: '2026-11-24-lugar-emision', titulo: 'Punta Arenas en el encabezado de los documentos', aplicar: lugarEnDocumentos },
+  { id: '2026-11-25-leyenda-firma', titulo: 'Solo la leyenda de la empresa bajo la firma', aplicar: soloLeyendaBajoLaFirma },
 ];
 
 /** Correcciones conocidas y si ya se aplicaron en esta base (para la pantalla Sistema). */

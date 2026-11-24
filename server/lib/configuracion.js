@@ -4,6 +4,9 @@ import { representanteDe } from './datos-personales.js';
 // Lugar que encabeza todos los documentos junto a la fecha ("Punta Arenas, 24 de noviembre de 2026"), a pedido del cliente.
 export const LUGAR_EMISION = 'Punta Arenas';
 
+// Única leyenda bajo la firma en los documentos (a pedido del cliente: sin nombre, RUT ni cargo del representante).
+export const LEYENDA_FIRMA = 'Soc. de Inv. e Inmob. Agua Fresca SpA';
+
 // Parámetros generales del sistema, editables desde la pantalla Configuración.
 export const VALORES_INICIALES = {
   empresa: {
@@ -61,6 +64,7 @@ export function leerConfiguracion() {
     credito: leerSeccion('credito'),
     plano: leerSeccion('plano'),
     lugar_emision: LUGAR_EMISION,
+    leyenda_firma: LEYENDA_FIRMA,
     // Solo si hay firma cargada: la versión sirve para que el navegador no muestre una imagen anterior.
     firma: leerSeccion('firma')?.archivo ? { version: leerSeccion('firma').version } : null,
   };

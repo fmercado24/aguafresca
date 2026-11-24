@@ -161,8 +161,8 @@ no cuentan como atrasadas ni como cuotas por pagar.
 
 ### Pie de firma y firma digital
 
-Los comprobantes de pago, las cotizaciones, el estado de cuenta impreso y las cartas de cobranza llevan el pie de firma del
-**representante legal**: su firma digital, nombre, cargo, RUT y la razón social. La firma se carga en **Configuración → Empresa y
+Los comprobantes de pago, las cotizaciones, el estado de cuenta impreso y las cartas de cobranza llevan el pie de firma: la firma
+digital y, bajo ella, solo la leyenda **"Soc. de Inv. e Inmob. Agua Fresca SpA"** (sin nombre, RUT ni cargo del representante). La firma se carga en **Configuración → Empresa y
 proyecto → Firma digital** (o el dueño designado representante, en *Mi cuenta*): una foto o escaneo de la firma en papel blanco;
 el sistema quita el fondo. En las cartas va con la variable `{{firma}}`; al enviarlas por correo la firma viaja como imagen adjunta.
 Todos los documentos llevan arriba el lugar y la fecha: **"Punta Arenas, 24 de noviembre de 2026"** (en las cartas y promesas,

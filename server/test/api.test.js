@@ -1085,7 +1085,10 @@ test('firma del representante legal, pie habitual en pesos y plano para Google E
   const venta = ok(await contador('GET', '/ventas')).find((x) => x.estado === 'vigente');
   const carta = ok(await abogado('POST', '/documentos/confeccionar', { plantilla_id: plantilla.id, venta_id: venta.id }));
   assert.match(carta.contenido, /<img class="firma-digital" src="data:image\/png;base64,/);
-  assert.match(carta.contenido, /Representante legal/);
+  // Bajo la firma va solo la leyenda de la empresa: ni nombre, ni RUT, ni cargo, ni contacto.
+  const pie = carta.contenido.slice(carta.contenido.indexOf('pie-firma'));
+  assert.match(pie, /<p>Soc\. de Inv\. e Inmob\. Agua Fresca SpA<\/p><\/div>\s*$/);
+  assert.doesNotMatch(pie, /RUT|Rosa Ríos|Representante|@/);
   const doc = ok(await abogado('POST', '/documentos', { tipo: 'carta_cobranza', titulo: 'Carta', venta_id: venta.id, contenido: carta.contenido }), 201).id;
   assert.match(ok(await abogado('GET', `/documentos/${doc}`)).contenido, /class="firma-digital"/, 'la firma queda en la carta guardada');
   ok(await admin('DELETE', '/config/firma'));
@@ -1150,8 +1153,16 @@ test('documentos: el encabezado dice siempre "Punta Arenas" junto a la fecha', a
   const sinFecha = plantillas.filter((p) => p.tipo === 'carta_cobranza')[1];
   const otra = ok(await abogado('GET', `/plantillas/${sinFecha.id}`));
   ok(await contador('PUT', `/plantillas/${sinFecha.id}`, { tipo: otra.tipo, nombre: otra.nombre, contenido: otra.contenido.replace(/<p style="text-align:right">[^<]*<\/p>/, '') }));
+  // Y una carta con la línea de teléfono y correo bajo la firma (como quedaban antes).
+  const tercera = plantillas.filter((p) => p.tipo === 'carta_cobranza')[2];
+  const conContacto = ok(await abogado('GET', `/plantillas/${tercera.id}`));
+  ok(await contador('PUT', `/plantillas/${tercera.id}`, { tipo: conContacto.tipo, nombre: conContacto.nombre, contenido: conContacto.contenido.replace('{{firma}}', '{{firma}}\n<p>{{empresa.telefono}} · {{empresa.email}}</p>') }));
+  assert.match(ok(await abogado('GET', `/plantillas/${tercera.id}`)).contenido, /\{\{firma\}\}\s*<p>\{\{empresa\.telefono\}\}/);
   const { aplicarCorrecciones } = await import('../lib/correcciones.js');
-  const r = aplicarCorrecciones().find((x) => /Punta Arenas/.test(x.titulo));
+  const todas = aplicarCorrecciones();
+  assert.ok(todas.find((x) => /leyenda de la empresa/.test(x.titulo)).corregidas.includes(conContacto.nombre));
+  assert.doesNotMatch(ok(await abogado('GET', `/plantillas/${tercera.id}`)).contenido, /empresa\.telefono\}\} · \{\{empresa\.email/);
+  const r = todas.find((x) => /Punta Arenas/.test(x.titulo));
   assert.ok(r.corregidas.includes(original.nombre) && r.corregidas.includes(otra.nombre));
   assert.match(ok(await abogado('GET', `/plantillas/${carta.id}`)).contenido, /\{\{lugar_emision\}\}, \{\{fecha_hoy\}\}/);
   assert.match(ok(await abogado('GET', `/plantillas/${sinFecha.id}`)).contenido, /^<p style="text-align:right">\{\{lugar_emision\}\}, \{\{fecha_hoy\}\}<\/p>/, 'a la carta sin fecha se le agrega');
