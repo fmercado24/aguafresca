@@ -9,7 +9,7 @@ import {
   AreaTexto, Boton, Campo, Cargando, Encabezado, Entrada, EntradaMonto, ErrorCarga, Modal, Selector, Tarjeta, Vacio, num, td, th, EntradaEntero, EntradaDecimal,
 } from '../ui';
 
-// Editor libre de la tabla de amortización (contador y super administrador).
+// Editor libre de la tabla de amortización (administrador y super administrador).
 // Cada fila se edita a mano (vencimiento, interés, amortización); la cuota es siempre interés + amortización
 // y el saldo insoluto se recalcula solo. Nada se guarda hasta confirmar el resumen de cambios.
 
@@ -83,7 +83,7 @@ function Editor({ id }: { id: number }) {
   const { puede } = useSesion();
   const consulta = useDatos<VentaDetalle>(`/ventas/${id}`);
   if (!puede('amortizacion')) {
-    return <ErrorCarga mensaje="La tabla de amortización la modifica el contador o el super administrador." />;
+    return <ErrorCarga mensaje="La tabla de amortización la modifica el administrador o el super administrador." />;
   }
   if (consulta.datos === null) return consulta.error ? <ErrorCarga mensaje={consulta.error} reintentar={consulta.recargar} /> : <Cargando />;
   if (consulta.datos.venta.estado === 'anulada') return <ErrorCarga mensaje="La venta está anulada: su tabla no se puede modificar." />;

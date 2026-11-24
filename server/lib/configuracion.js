@@ -1,6 +1,9 @@
 import { db } from '../db.js';
 import { representanteDe } from './datos-personales.js';
 
+// Lugar que encabeza todos los documentos junto a la fecha ("Punta Arenas, 24 de noviembre de 2026"), a pedido del cliente.
+export const LUGAR_EMISION = 'Punta Arenas';
+
 // Parámetros generales del sistema, editables desde la pantalla Configuración.
 export const VALORES_INICIALES = {
   empresa: {
@@ -57,6 +60,7 @@ export function leerConfiguracion() {
     proyecto: leerSeccion('proyecto'),
     credito: leerSeccion('credito'),
     plano: leerSeccion('plano'),
+    lugar_emision: LUGAR_EMISION,
     // Solo si hay firma cargada: la versión sirve para que el navegador no muestre una imagen anterior.
     firma: leerSeccion('firma')?.archivo ? { version: leerSeccion('firma').version } : null,
   };

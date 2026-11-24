@@ -82,7 +82,7 @@ rutasParcelas.put('/parcelas/:id/precio', requiere('precios'), (req, res) => {
   res.json({ ok: true, cambios: 1 });
 });
 
-// Reservar o liberar una parcela: contador y super administrador.
+// Reservar o liberar una parcela: administrador y super administrador.
 rutasParcelas.post('/parcelas/:id/estado', requiere('operaciones'), (req, res) => {
   const id = idDe(req.params.id);
   const { estado } = leer(req.body, { estado: opcion(['disponible', 'reservada'], { req: true }) });
@@ -99,7 +99,7 @@ rutasParcelas.post('/parcelas/:id/estado', requiere('operaciones'), (req, res) =
 
 const nombreAccion = { precio: 'Precio de lista', precio_m2: 'Precio por m²', sector: 'Manzana' };
 
-// Precios en bloque: super administrador y contador. Manzana y códigos: solo el super administrador.
+// Precios, manzana y códigos en bloque: administrador y super administrador.
 rutasParcelas.post('/parcelas/masivo', (req, res) => {
   const ids = req.body?.ids;
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > 5000 || !ids.every((x) => Number.isInteger(x) && x > 0)) {
@@ -243,7 +243,7 @@ rutasParcelas.get('/mapa/google-earth/enlace.kml', (req, res) => {
   res.send(kml);
 });
 
-// Lo configuran el contador o el super administrador (quienes manejan los precios y el mapa).
+// Lo configuran el administrador o el super administrador (quienes manejan los precios y el mapa).
 const exigirMapa = (usuario) => { if (!puede(usuario, 'parcelas')) exigir(usuario, 'precios'); };
 
 rutasParcelas.put('/mapa/google-earth', (req, res) => {

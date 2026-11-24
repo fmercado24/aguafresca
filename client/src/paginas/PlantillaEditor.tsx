@@ -133,7 +133,7 @@ function Editor({ id }: { id: number | null }) {
       <Encabezado
         volver={{ a: '/documentos?vista=plantillas', texto: 'Plantillas' }}
         titulo={id ? (editable ? 'Editar plantilla' : nombre) : 'Nueva plantilla'}
-        descripcion={editable ? undefined : 'Las plantillas las modifica el abogado o el super administrador.'}
+        descripcion={editable ? undefined : 'Las plantillas las modifica el administrador o el super administrador.'}
       >
         {editable && (
           <>

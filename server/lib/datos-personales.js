@@ -1,5 +1,5 @@
 // Datos personales de los dueños (ldiaz y pmercado). Cada uno los completa en Configuración → Mi cuenta
-// y se insertan en los documentos legales: variables {{abogado.…}} y {{contador.…}}, y la comparecencia
+// y se insertan en los documentos legales: variables {{ldiaz.…}} y {{pmercado.…}}, y la comparecencia
 // del representante legal cuando la empresa designa a uno de ellos.
 import { db } from '../db.js';
 import { formatearRut } from './rut.js';
@@ -29,7 +29,6 @@ export function datosPersonalesDe(fila) {
 }
 
 export const datosDeCuenta = (usuario) => datosPersonalesDe(db.get('SELECT datos_personales FROM usuarios WHERE usuario = ?', usuario));
-export const datosDeRol = (rol) => datosPersonalesDe(db.get('SELECT datos_personales FROM usuarios WHERE rol = ? ORDER BY id LIMIT 1', rol));
 
 /** Cuántos campos tiene completos (para mostrar el avance). */
 export const completos = (d) => Object.keys(CAMPOS_PERSONALES).filter((k) => String(d[k] ?? '').trim()).length;

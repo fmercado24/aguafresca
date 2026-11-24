@@ -3,7 +3,7 @@
 // Documentos → Plantillas antes de usarlos con clientes.
 
 const encabezadoCarta = `
-<p style="text-align:right">{{empresa.ciudad}}, {{fecha_hoy}}</p>
+<p style="text-align:right">{{lugar_emision}}, {{fecha_hoy}}</p>
 <p>Señor(a)<br><strong>{{cliente.nombre}}</strong><br>{{cliente.direccion}}, {{cliente.comuna}}<br><u>Presente</u></p>`;
 
 // {{firma}}: firma digital, nombre, cargo y RUT del representante legal, y la empresa.
@@ -15,6 +15,9 @@ const firmaCarta = `
 /** Pie de firma de las versiones anteriores de las cartas (para actualizar las plantillas ya guardadas). */
 export const FIRMA_CARTA_ANTERIOR = '<p><br /><br /><strong>{{empresa.representante}}</strong><br />{{empresa.razon_social}}<br />{{empresa.telefono}} · {{empresa.email}}</p>';
 export const FIRMA_CARTA_NUEVA = '{{firma}}<p>{{empresa.telefono}} · {{empresa.email}}</p>';
+
+/** Encabezado de lugar y fecha de las cartas: siempre "Punta Arenas, <fecha>". */
+export const FECHA_CARTA_NUEVA = '<p style="text-align:right">{{lugar_emision}}, {{fecha_hoy}}</p>';
 
 const cartaRecordatorio = `${encabezadoCarta}
 <p><strong>Ref.: Recordatorio de pago — Parcela N° {{parcela.numero}}, {{proyecto.nombre}}</strong></p>
@@ -51,7 +54,7 @@ ${firmaCarta}`;
 const comparecencia = `
 <h1 style="text-align:center">CONTRATO DE PROMESA DE COMPRAVENTA</h1>
 <p style="text-align:center"><strong>{{empresa.razon_social}}</strong><br>A<br><strong>{{cliente.nombre}}</strong></p>
-<p style="text-align:justify">En {{empresa.ciudad}}, a {{fecha_hoy}}, entre <strong>{{empresa.razon_social}}</strong>, rol único tributario N° {{empresa.rut}}, representada por don(ña) <strong>{{representante.nombre}}</strong>, de nacionalidad {{representante.nacionalidad}}, {{representante.estado_civil}}, {{representante.profesion}}, cédula de identidad N° {{representante.rut}}, ambos domiciliados en {{empresa.direccion}}, {{empresa.ciudad}}, en adelante “la promitente vendedora”; y don(ña) <strong>{{cliente.nombre}}</strong>, de nacionalidad {{cliente.nacionalidad}}, {{cliente.estado_civil}}, {{cliente.profesion}}, cédula de identidad N° {{cliente.rut}}, domiciliado(a) en {{cliente.direccion}}, comuna de {{cliente.comuna}}, en adelante “el promitente comprador”; se ha convenido el siguiente contrato de promesa de compraventa:</p>
+<p style="text-align:justify">En {{lugar_emision}}, a {{fecha_hoy}}, entre <strong>{{empresa.razon_social}}</strong>, rol único tributario N° {{empresa.rut}}, representada por don(ña) <strong>{{representante.nombre}}</strong>, de nacionalidad {{representante.nacionalidad}}, {{representante.estado_civil}}, {{representante.profesion}}, cédula de identidad N° {{representante.rut}}, ambos domiciliados en {{empresa.direccion}}, {{empresa.ciudad}}, en adelante “la promitente vendedora”; y don(ña) <strong>{{cliente.nombre}}</strong>, de nacionalidad {{cliente.nacionalidad}}, {{cliente.estado_civil}}, {{cliente.profesion}}, cédula de identidad N° {{cliente.rut}}, domiciliado(a) en {{cliente.direccion}}, comuna de {{cliente.comuna}}, en adelante “el promitente comprador”; se ha convenido el siguiente contrato de promesa de compraventa:</p>
 <p style="text-align:justify"><strong>PRIMERO: Antecedentes.</strong> La promitente vendedora es dueña del inmueble denominado {{proyecto.nombre}}, ubicado en {{proyecto.ubicacion}}, cuyo dominio se encuentra inscrito según el siguiente detalle: {{proyecto.inscripcion}}. Dicho inmueble fue subdividido conforme al plano de subdivisión [individualizar plano y su archivo en el Conservador de Bienes Raíces], resultando, entre otros, la <strong>Parcela N° {{parcela.numero}}</strong>, de una superficie aproximada de {{parcela.superficie}} metros cuadrados, rol de avalúo N° {{parcela.rol}}, cuyos deslindes particulares son: {{parcela.deslindes}}.</p>
 <p style="text-align:justify"><strong>SEGUNDO: Promesa.</strong> Por el presente instrumento, la promitente vendedora promete vender, ceder y transferir al promitente comprador, quien promete comprar, aceptar y adquirir para sí, la Parcela N° {{parcela.numero}} individualizada en la cláusula anterior.</p>`;
 

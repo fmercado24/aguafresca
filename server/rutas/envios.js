@@ -66,7 +66,7 @@ rutasEnvios.post('/config/canales/prueba', requiere('empresa'), async (req, res)
   res.json({ ok: true });
 });
 
-// ---------- Envío programado (contador y super administrador) ----------
+// ---------- Envío programado (administrador y super administrador) ----------
 
 rutasEnvios.get('/cobranza/programacion', (req, res) => {
   const reglas = leerReglas();

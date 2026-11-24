@@ -9,7 +9,7 @@ import {
   AreaTexto, Boton, Buscador, Campo, Carga, Encabezado, EnlaceBoton, InsigniaVenta, Modal, SelectorOrden, Tabla, Tarjeta, Vacio, num, td, th, useOrden,
 } from '../ui';
 
-// ---------- Ventas que informó el abogado y falta registrar ----------
+// ---------- Ventas que informó el usuario (ldiaz) y falta registrar ----------
 
 function VentasInformadas() {
   const avisos = useAvisos();

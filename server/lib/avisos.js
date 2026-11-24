@@ -1,5 +1,5 @@
 // Avisos dentro de la aplicación (la campana): por ahora, de las visitas agendadas, para los dueños
-// (abogado y contador). "clave" evita que el mismo aviso se repita.
+// (ldiaz y pmercado). "clave" evita que el mismo aviso se repita.
 import { db } from '../db.js';
 import { PERMISOS, PERFILES } from '../auth.js';
 import { ahora, fechaCorta } from './fechas.js';
@@ -7,7 +7,7 @@ import { enviarPush } from './push.js';
 
 const ROLES_CON_AVISOS = Object.keys(PERMISOS).filter((rol) => PERMISOS[rol].includes('avisos_visitas'));
 
-/** "Luis Díaz (Abogado)" */
+/** "Luis Díaz (Usuario)" */
 export const firmaDe = (u) => (u ? `${u.nombre} (${PERFILES[u.rol] ?? u.rol})` : '');
 
 export function avisar(usuarioIds, { tipo, titulo, detalle = '', enlace = '', clave }) {

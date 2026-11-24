@@ -87,7 +87,7 @@ export function AplazarCuotas({ d, alCerrar, alGuardar }: { d: VentaDetalle; alC
             </div>
           )}
           <Campo etiqueta="Motivo (queda en el historial de la venta)">
-            <AreaTexto rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: el cliente pidió aplazar por cesantía; acordado con el contador." />
+            <AreaTexto rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: el cliente pidió aplazar por cesantía; acordado con el administrador." />
           </Campo>
         </div>
       )}

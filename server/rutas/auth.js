@@ -19,10 +19,12 @@ rutasAuth.post('/auth/login', (req, res) => {
   const nombreUsuario = usuario.toLowerCase();
   const clave = `${req.ip}|${nombreUsuario}`;
   comprobarIntentos(clave);
-  const u = db.get('SELECT * FROM usuarios WHERE usuario = ? AND activo = 1', nombreUsuario);
+  const u = db.get('SELECT * FROM usuarios WHERE usuario = ?', nombreUsuario);
   const ok = !!u && verificarPassword(password, u.password_hash);
   anotarIntento(clave, ok);
   if (!ok) throw new ErrorApp('Usuario o contraseña incorrectos', 401);
+  // Solo quien conoce la contraseña se entera de que la cuenta está bloqueada.
+  if (!u.activo) throw new ErrorApp('Esta cuenta está bloqueada. Hable con el super administrador del sistema.', 403);
   abrirSesion(req, res, u.id);
   res.json(deSesion(u));
 });
@@ -73,8 +75,15 @@ rutasAuth.put('/auth/datos-personales', autenticar, requiere('datos_personales')
 rutasAuth.get('/usuarios', autenticar, (req, res) => {
   // Todos necesitan la lista para asignar vendedores; el nombre de usuario y el perfil los ve solo el super administrador,
   // que además ve el nombre completo y el RUT de los dueños (para designar al representante legal).
-  const filas = db.all('SELECT id, usuario, nombre, rol, datos_personales FROM usuarios WHERE activo = 1 ORDER BY id');
-  res.json(puede(req.usuario, 'administracion')
+  // El super administrador ve también las cuentas bloqueadas y cuántas sesiones tiene abiertas cada una.
+  const admin = puede(req.usuario, 'administracion');
+  const filas = db.all(
+    `SELECT u.id, u.usuario, u.nombre, u.rol, u.activo, u.datos_personales,
+            (SELECT COUNT(*) FROM sesiones s WHERE s.usuario_id = u.id AND s.expira_en > ?) AS sesiones
+       FROM usuarios u ${admin ? '' : 'WHERE u.activo = 1'} ORDER BY u.id`,
+    Date.now(),
+  );
+  res.json(admin
     ? filas.map(({ datos_personales, ...u }) => {
         if (!ROLES_DUENOS.includes(u.rol)) return { ...u, perfil: PERFILES[u.rol] };
         const d = datosPersonalesDe({ datos_personales });
@@ -84,6 +93,38 @@ rutasAuth.get('/usuarios', autenticar, (req, res) => {
         };
       })
     : filas.map(({ id, nombre }) => ({ id, nombre })));
+});
+
+// Bloquear o reactivar la cuenta de un dueño: bloqueada no puede ingresar y se cierran sus sesiones.
+rutasAuth.post('/usuarios/:id/bloqueo', autenticar, requiere('administracion'), (req, res) => {
+  const id = idDe(req.params.id);
+  const activo = req.body?.activo;
+  if (typeof activo !== 'boolean') throw new ErrorApp('Indique si la cuenta queda activa o bloqueada');
+  const u = db.get('SELECT id, usuario, rol, activo FROM usuarios WHERE id = ?', id);
+  if (!u) throw new ErrorApp('La cuenta no existe', 404);
+  if (u.rol === 'superadmin' || id === req.usuario.id) throw new ErrorApp('La cuenta del super administrador no se puede bloquear', 409);
+  db.tx(() => {
+    db.run('UPDATE usuarios SET activo = ? WHERE id = ?', activo ? 1 : 0, id);
+    if (!activo) db.run('DELETE FROM sesiones WHERE usuario_id = ?', id);
+    registrar(req.usuario.id, {
+      accion: activo ? 'cuenta_reactivada' : 'cuenta_bloqueada', entidad: 'usuario', entidadId: id,
+      detalle: activo ? `Cuenta "${u.usuario}" reactivada` : `Cuenta "${u.usuario}" bloqueada: no puede ingresar y se cerraron sus sesiones`,
+    });
+  });
+  res.json({ ok: true });
+});
+
+// Cierra todas las sesiones abiertas de una cuenta (por ejemplo, si quedó abierta en un equipo perdido).
+rutasAuth.post('/usuarios/:id/cerrar-sesiones', autenticar, requiere('administracion'), (req, res) => {
+  const id = idDe(req.params.id);
+  const u = db.get('SELECT id, usuario FROM usuarios WHERE id = ?', id);
+  if (!u) throw new ErrorApp('La cuenta no existe', 404);
+  const cerradas = db.tx(() => {
+    const n = id === req.usuario.id ? cerrarOtrasSesiones(req, id) : Number(db.run('DELETE FROM sesiones WHERE usuario_id = ?', id).changes);
+    registrar(req.usuario.id, { accion: 'sesiones_cerradas', entidad: 'usuario', entidadId: id, detalle: `Se cerraron las sesiones abiertas de "${u.usuario}"` });
+    return n;
+  });
+  res.json({ ok: true, cerradas: cerradas ?? 0 });
 });
 
 rutasAuth.put('/usuarios/:id', autenticar, requiere('administracion'), (req, res) => {

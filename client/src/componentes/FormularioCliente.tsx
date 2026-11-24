@@ -31,7 +31,7 @@ const ESENCIALES = ['nombre', 'rut', 'fecha_nacimiento', 'nacionalidad', 'estado
 
 /**
  * Alta o edición de un cliente con todos sus antecedentes. Con `esencial`, solo identificación y domicilio:
- * así el abogado completa lo que necesita un documento sin tocar los antecedentes financieros.
+ * así el usuario (ldiaz) completa lo que necesita un documento sin tocar los antecedentes financieros.
  */
 export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar, esencial = false, faltan }: {
   cliente?: Cliente;
@@ -102,7 +102,7 @@ export function FormularioCliente({ cliente, inicial, alCerrar, alGuardar, esenc
         {esencial && (
           <p className="mb-4 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
             Identificación y domicilio, para los documentos legales.{faltan?.length ? <> Faltan para este documento: <strong>{faltan.join(', ')}</strong>.</> : ''}
-            {' '}Los antecedentes laborales y financieros los completa el contador.
+            {' '}Los antecedentes laborales y financieros los completa el administrador.
           </p>
         )}
         <Seccion titulo="Identificación">

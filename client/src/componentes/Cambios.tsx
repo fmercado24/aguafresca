@@ -71,7 +71,7 @@ export const ACCIONES_REGISTRO: Record<string, string> = {
   datos_corregidos: 'Corrección automática de datos',
   google_earth: 'Plano en Google Earth',
   datos_personales: 'Datos personales actualizados',
-  venta_informada: 'Venta informada al contador',
+  venta_informada: 'Venta informada al administrador',
   venta_informada_descartada: 'Venta informada no registrada',
   cliente_completado: 'Datos del cliente completados',
   canales_envio: 'Correo de envío',
@@ -81,4 +81,8 @@ export const ACCIONES_REGISTRO: Record<string, string> = {
   usuario_editado: 'Cuenta modificada',
   clave_restablecida: 'Contraseña restablecida',
   clave_cambiada: 'Contraseña cambiada',
+  cuenta_bloqueada: 'Cuenta bloqueada',
+  cuenta_reactivada: 'Cuenta reactivada',
+  sesiones_cerradas: 'Sesiones cerradas',
+  respaldo_descargado: 'Respaldo descargado',
 };

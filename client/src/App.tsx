@@ -32,7 +32,7 @@ function ConPermiso({ permiso, children }: { permiso: Permiso; children: ReactNo
   if (puede(permiso)) return <>{children}</>;
   return (
     <Vacio icono={Lock} titulo="Su cuenta no puede realizar esta acción" accion={<EnlaceBoton variante="secundario" to="/">Volver al inicio</EnlaceBoton>}>
-      Puede consultar toda la información, pero las ventas, los pagos y los clientes los registra el contador o el super administrador.
+      Puede consultar toda la información, pero las ventas, los pagos y los clientes los registra el administrador o el super administrador.
     </Vacio>
   );
 }

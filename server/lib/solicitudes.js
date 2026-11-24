@@ -1,4 +1,4 @@
-// Ventas que informa el abogado: él cierra la venta con el cliente a partir de una cotización, y el contador
+// Ventas que informa el usuario (ldiaz): él cierra la venta con el cliente a partir de una cotización, y el administrador
 // la registra en el sistema (pie, cuotas, pagos). Mientras tanto la parcela queda reservada, si así lo pidió.
 import { db, insertar } from '../db.js';
 import { registrar } from './bitacora.js';
@@ -25,7 +25,7 @@ export function informarVenta(cotizacionId, { notas = '', reservar = true }, usu
   if (!q) throw new ErrorApp('La cotización no existe', 404);
   if (q.estado !== 'vigente') throw new ErrorApp('Solo se puede informar la venta de una cotización vigente');
   if (!['disponible', 'reservada'].includes(q.parcela_estado)) throw new ErrorApp(`La parcela ${q.parcela} ya no está disponible`, 409);
-  if (solicitudPendiente(cotizacionId)) throw new ErrorApp('Esta venta ya fue informada y está esperando que el contador la registre', 409);
+  if (solicitudPendiente(cotizacionId)) throw new ErrorApp('Esta venta ya fue informada y está esperando que el administrador la registre', 409);
 
   return db.tx(() => {
     const reservo = reservar && q.parcela_estado === 'disponible';

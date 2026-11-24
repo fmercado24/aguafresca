@@ -453,6 +453,24 @@ export const ESTADOS_PARCELA: Record<EstadoParcela, { etiqueta: string; tono: ke
   bloqueada: { etiqueta: 'No disponible', tono: 'gris', icono: Ban },
 };
 
+// ---------- Nombre de los PDF ----------
+
+/**
+ * Título de la pestaña mientras se ve un documento: el navegador lo propone como nombre del archivo al elegir
+ * "Guardar como PDF" (por ejemplo, "Cobranza - Juan Pérez"). Al salir se restituye el título anterior.
+ */
+export function useNombreArchivo(nombre: string | null | undefined) {
+  useEffect(() => {
+    if (!nombre) return;
+    const anterior = document.title;
+    document.title = nombreDeArchivo(nombre);
+    return () => { document.title = anterior; };
+  }, [nombre]);
+}
+
+/** Quita los caracteres que no puede llevar un nombre de archivo. */
+export const nombreDeArchivo = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+
 // ---------- Orden de los listados ----------
 
 /** Orden elegido para un listado; se recuerda en este equipo. */

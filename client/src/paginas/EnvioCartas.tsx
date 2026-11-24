@@ -12,10 +12,10 @@ import {
 } from '../ui';
 
 // Cartas de cobranza por correo (a mano o programadas) y WhatsApp (siempre a mano, sin costo):
-//  - Configuración → Envío de cartas: programación (contador) y correo de envío con su contraseña (super administrador).
+//  - Configuración → Envío de cartas: programación y correo de envío con su contraseña (administrador y super administrador).
 //  - Cobranza → Envíos: lo que saldría hoy, "Enviar ahora" y el registro de todo lo enviado.
 
-// ---------- Programación de los envíos (contador y super administrador) ----------
+// ---------- Programación de los envíos (administrador y super administrador) ----------
 
 type Etapa = { dias: string; plantilla_id: number | null };
 
@@ -71,7 +71,7 @@ function Programacion({ inicial, editable, alGuardar }: { inicial: ProgramacionC
     <form onSubmit={guardar}>
       <Tarjeta titulo="Cartas de cobranza: ¿a mano o programadas?">
         <fieldset disabled={!editable} className="min-w-0 space-y-4">
-          {!editable && <p className="text-sm text-stone-500">Esta programación la define el contador o el super administrador.</p>}
+          {!editable && <p className="text-sm text-stone-500">Esta programación la define el administrador o el super administrador.</p>}
           <div className="space-y-2">
             <label className="flex items-start gap-2 text-sm">
               <input type="radio" name="modo" className="mt-1" checked={p.modo === 'manual'} onChange={() => setP({ ...p, modo: 'manual' })} />

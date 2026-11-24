@@ -6,11 +6,11 @@ import { useAvisos, useConfig, useSesion } from '../contexto';
 import { FormularioCliente } from '../componentes/FormularioCliente';
 import { FormularioGestion, TIPOS_GESTION } from '../componentes/FormularioGestion';
 import { Membrete } from '../componentes/Membrete';
-import { MEDIOS_PAGO, fecha, fechaLarga, fechaRegistro, formatearRut, hora, pesos, plural } from '../formato';
+import { MEDIOS_PAGO, fecha, fechaRegistro, formatearRut, hora, pesos, plural } from '../formato';
 import type { FichaCliente, Gestion } from '../tipos';
 import {
   Boton, Carga, Dato, Encabezado, EnlaceBoton, Insignia, InsigniaCotizacion, InsigniaVenta, InsigniaVisita, Par,
-  Pestanas, Tabla, Tarjeta, Vacio, num, td, th,
+  Pestanas, Tabla, Tarjeta, Vacio, num, td, th, useNombreArchivo,
 } from '../ui';
 
 type Pestana = 'antecedentes' | 'compras' | 'pagos' | 'cobranza' | 'documentos';
@@ -30,6 +30,7 @@ function Ficha({ id }: { id: number }) {
   const avisos = useAvisos();
   const navegar = useNavigate();
   const consulta = useDatos<FichaCliente>(`/clientes/${id}`);
+  useNombreArchivo(consulta.datos ? `Ficha - ${consulta.datos.cliente.nombre}` : null);
   const [pestana, setPestana] = useState<Pestana>('compras');
   const [editando, setEditando] = useState(false);
   const [gestionando, setGestionando] = useState(false);
@@ -385,7 +386,7 @@ function FichaImpresa({ f }: { f: FichaCliente }) {
 
   return (
     <div className="hidden text-stone-900 print:block">
-      <Membrete titulo="Ficha de cliente" subtitulo={`Emitida el ${fechaLarga(hoy)}`} />
+      <Membrete titulo="Ficha de cliente" fecha={hoy} />
       <h1 className="text-xl font-semibold">{c.nombre}</h1>
       <p className="text-sm text-stone-600">{c.rut ? `RUT ${formatearRut(c.rut)}` : 'Sin RUT registrado'}</p>
 

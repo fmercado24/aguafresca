@@ -79,7 +79,7 @@ rutasCotizaciones.get('/cotizaciones/:id', (req, res) => {
     cotizacion: { ...q, vencida: q.estado === 'vigente' && q.valida_hasta < hoy() },
     parcela: db.get('SELECT id, numero, sector, superficie_m2, precio, estado, rol_sii, descripcion FROM parcelas WHERE id = ?', q.parcela_id),
     simulacion: simular(q),
-    // Último aviso de venta al contador (si lo hay): pendiente, registrada o descartada.
+    // Último aviso de venta al administrador (si lo hay): pendiente, registrada o descartada.
     solicitud: db.get(
       `SELECT s.id, s.estado, s.notas, s.creado_en, s.resuelto_en, s.motivo, s.venta_id, s.reservo_parcela, uc.nombre AS informada_por, ur.nombre AS resuelta_por
          FROM solicitudes_venta s LEFT JOIN usuarios uc ON uc.id = s.creado_por LEFT JOIN usuarios ur ON ur.id = s.resuelto_por
@@ -89,9 +89,9 @@ rutasCotizaciones.get('/cotizaciones/:id', (req, res) => {
   });
 });
 
-// Una cotización cuya venta se informó al contador no se cambia hasta que él la registre o la descarte.
+// Una cotización cuya venta se informó al administrador no se cambia hasta que la registre o la descarte.
 function noInformada(id) {
-  if (solicitudPendiente(id)) throw new ErrorApp('Esta venta fue informada al contador: no se puede modificar mientras él no la registre o la descarte', 409);
+  if (solicitudPendiente(id)) throw new ErrorApp('Esta venta fue informada al administrador: no se puede modificar mientras no la registre o la descarte', 409);
 }
 
 rutasCotizaciones.post('/cotizaciones', requiere('cotizaciones'), (req, res) => {
@@ -126,7 +126,7 @@ rutasCotizaciones.delete('/cotizaciones/:id', requiere('cotizaciones'), (req, re
   res.json({ ok: true });
 });
 
-// ---------- Ventas informadas al contador ----------
+// ---------- Ventas informadas al administrador ----------
 
 rutasCotizaciones.post('/cotizaciones/:id/informar-venta', requiere('informar_ventas'), (req, res) => {
   const d = leer(req.body, { notas: texto({ max: 2000 }), reservar: booleano() });

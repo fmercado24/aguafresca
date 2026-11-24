@@ -8,13 +8,13 @@ import { Membrete } from '../componentes/Membrete';
 import { EnvioCarta } from '../componentes/EnvioCarta';
 import { descargar, fechaRegistro } from '../formato';
 import type { Documento } from '../tipos';
-import { Boton, Campo, Carga, Casilla, Encabezado, Entrada } from '../ui';
+import { Boton, Campo, Carga, Casilla, Encabezado, Entrada, nombreDeArchivo, useNombreArchivo } from '../ui';
 import { InsigniaTipo } from './Documentos';
 
 const escapar = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /** Genera un archivo que Microsoft Word y LibreOffice abren como documento editable. */
-function descargarWord(titulo: string, contenido: string) {
+function descargarWord(titulo: string, contenido: string, archivo: string) {
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><title>${escapar(titulo)}</title>
 <style>
@@ -31,8 +31,7 @@ function descargarWord(titulo: string, contenido: string) {
   .salto-pagina { page-break-before: always; }
 </style></head>
 <body>${contenido}</body></html>`;
-  const nombre = titulo.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'documento';
-  descargar(`${nombre}.doc`, new Blob(['﻿', html], { type: 'application/msword' }));
+  descargar(`${nombreDeArchivo(archivo) || 'documento'}.doc`, new Blob(['﻿', html], { type: 'application/msword' }));
 }
 
 export function DocumentoPagina() {
@@ -44,6 +43,11 @@ function Vista({ id }: { id: number }) {
   const avisos = useAvisos();
   const navegar = useNavigate();
   const consulta = useDatos<Documento>(`/documentos/${id}`);
+  // Nombre del PDF y del Word: "Cobranza - <cliente>" en las cartas, "Promesa - <cliente>" en los contratos.
+  const archivo = consulta.datos
+    ? consulta.datos.cliente ? `${consulta.datos.tipo === 'carta_cobranza' ? 'Cobranza' : 'Promesa'} - ${consulta.datos.cliente}` : consulta.datos.titulo
+    : null;
+  useNombreArchivo(archivo);
   const [editando, setEditando] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [contenido, setContenido] = useState('');
@@ -102,7 +106,7 @@ function Vista({ id }: { id: number }) {
               ) : (
                 <>
                   <Boton icono={Printer} onClick={() => window.print()}>Imprimir o guardar PDF</Boton>
-                  <Boton variante="secundario" icono={FileDown} onClick={() => descargarWord(d.titulo, d.contenido)}>Word</Boton>
+                  <Boton variante="secundario" icono={FileDown} onClick={() => descargarWord(d.titulo, d.contenido, archivo ?? d.titulo)}>Word</Boton>
                   <Boton variante="secundario" icono={Pencil} onClick={() => { setTitulo(d.titulo); setContenido(d.contenido); setEditando(true); }}>Editar</Boton>
                   <Boton variante="fantasma" icono={Trash2} onClick={eliminar} aria-label="Eliminar documento" />
                 </>

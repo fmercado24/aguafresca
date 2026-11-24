@@ -5,7 +5,7 @@ import { Membrete } from '../componentes/Membrete';
 import { PieFirma } from '../componentes/PieFirma';
 import { MEDIOS_PAGO, fecha, fechaLarga, formatearRut, pesos, plural } from '../formato';
 import type { Recibo } from '../tipos';
-import { Boton, Carga, Encabezado } from '../ui';
+import { Boton, Carga, Encabezado, useNombreArchivo } from '../ui';
 
 /** Cuántas cuotas quedan por pagar y de cuál a cuál (lo que el cliente quiere saber al pagar). */
 function textoPendientes(p: Recibo['pendientes']) {
@@ -25,6 +25,8 @@ function textoPendientes(p: Recibo['pendientes']) {
 export function ReciboPagina() {
   const { id } = useParams();
   const consulta = useDatos<Recibo>(`/pagos/${id}`);
+  // Nombre del PDF: "Pago - <cliente>".
+  useNombreArchivo(consulta.datos ? `Pago - ${consulta.datos.cliente.nombre}` : null);
 
   return (
     <Carga consulta={consulta}>
@@ -38,7 +40,7 @@ export function ReciboPagina() {
             </Encabezado>
 
             <div className="hoja mx-auto max-w-3xl rounded-xl border border-stone-200 bg-white p-6 text-stone-900 shadow-sm sm:p-10">
-              <Membrete titulo="Comprobante de pago" subtitulo={`N° ${r.pago.id}`} />
+              <Membrete titulo="Comprobante de pago" subtitulo={`N° ${r.pago.id}`} fecha={r.pago.fecha} />
 
               {r.pago.anulado ? (
                 <p className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">

@@ -100,7 +100,7 @@ rutasVentas.post('/ventas', requiere('operaciones'), (req, res) => {
   });
   const id = db.tx(() => {
     const ventaId = crearVenta(d, req.usuario.id);
-    // Si el abogado había informado esta venta, el aviso queda cerrado y se le avisa que ya está registrada.
+    // Si el usuario (ldiaz) había informado esta venta, el aviso queda cerrado y se le avisa que ya está registrada.
     if (d.cotizacion_id) cerrarSolicitudConVenta(d.cotizacion_id, ventaId, req.usuario);
     return ventaId;
   });
@@ -125,7 +125,7 @@ rutasVentas.delete('/ventas/:id', requiere('contabilidad'), (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- Tabla de amortización: edición libre (contador y super administrador) ----------
+// ---------- Tabla de amortización: edición libre (administrador y super administrador) ----------
 
 const motivoObligatorio = (cuerpo) => leer(cuerpo, { motivo: texto({ req: true, max: 500 }) }).motivo;
 

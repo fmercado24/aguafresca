@@ -42,7 +42,7 @@ asegurarUsuarios();
 test('la migración deja exactamente las tres cuentas y conserva al administrador', () => {
   assert.equal(db.get('PRAGMA user_version').user_version, MIGRACIONES.length);
   const cuentas = db.all('SELECT id, usuario, rol, password_hash FROM usuarios ORDER BY id');
-  assert.deepEqual(cuentas.map((c) => [c.usuario, c.rol]), [['admin', 'superadmin'], ['ldiaz', 'abogado'], ['pmercado', 'contador']]);
+  assert.deepEqual(cuentas.map((c) => [c.usuario, c.rol]), [['admin', 'superadmin'], ['ldiaz', 'usuario'], ['pmercado', 'admin']]);
   assert.equal(cuentas[0].id, 1);
   assert.equal(cuentas[0].password_hash, 'hash-del-admin', 'el administrador conserva su contraseña');
   assert.deepEqual(db.all('SELECT token_hash FROM sesiones').map((s) => s.token_hash), ['sesion-admin'], 'la sesión del administrador sigue abierta');

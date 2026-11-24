@@ -107,7 +107,7 @@ rutasClientes.put('/clientes/:id', requiere('operaciones'), (req, res) => {
 });
 
 // Datos esenciales (identificación y domicilio): los necesarios para confeccionar promesas y cartas.
-// Los puede completar también el abogado, que no modifica los antecedentes financieros del cliente.
+// Los puede completar también el usuario (ldiaz), que no modifica los antecedentes financieros del cliente.
 export const ESENCIALES = {
   nombre: 'Nombre', rut: 'RUT', fecha_nacimiento: 'Fecha de nacimiento', nacionalidad: 'Nacionalidad', estado_civil: 'Estado civil',
   profesion: 'Profesión u oficio', direccion: 'Dirección', comuna: 'Comuna', ciudad: 'Ciudad', region: 'Región', telefono: 'Teléfono', email: 'Correo electrónico',

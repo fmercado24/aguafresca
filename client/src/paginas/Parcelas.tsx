@@ -449,7 +449,7 @@ function GoogleEarth({ info, alCerrar, alCambiar }: { info: InfoGoogleEarth | nu
               ))}
             </ol>
           ) : (
-            <p className="text-stone-600">Lo configura el contador o el super administrador.</p>
+            <p className="text-stone-600">Lo configura el administrador o el super administrador.</p>
           )}
           {temporal && (
             <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-950">

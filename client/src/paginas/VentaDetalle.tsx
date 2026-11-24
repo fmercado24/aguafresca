@@ -7,11 +7,11 @@ import { Membrete } from '../componentes/Membrete';
 import { PieFirma } from '../componentes/PieFirma';
 import { AplazarCuotas } from '../componentes/AplazarCuotas';
 import { ACCIONES_REGISTRO, ListaCambios, listarCambios } from '../componentes/Cambios';
-import { MEDIOS_PAGO, descargarCsv, fecha, fechaHoraRegistro, fechaLarga, fechaRegistro, formatearRut, numero, pesos, plural, porcentaje } from '../formato';
+import { MEDIOS_PAGO, descargarCsv, fecha, fechaHoraRegistro, fechaRegistro, formatearRut, numero, pesos, plural, porcentaje } from '../formato';
 import type { Cuota, EntradaRegistro, Pago, VentaDetalle } from '../tipos';
 import {
   AreaTexto, Boton, Campo, Carga, Dato, Encabezado, EnlaceBoton, Entrada, EntradaMonto, InsigniaCuota, InsigniaVenta, Modal, Par,
-  Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th,
+  Pestanas, Selector, Tabla, Tarjeta, Vacio, num, td, th, useNombreArchivo,
 } from '../ui';
 
 const nombreCuota = (c: { tipo: 'pie' | 'cuota'; numero: number }, hayCuotas = true) => (c.tipo === 'pie' ? (hayCuotas ? 'Pie' : 'Contado') : `N° ${c.numero}`);
@@ -177,7 +177,7 @@ function DialogoMotivo({ titulo, mensaje, confirmar, alCerrar, alConfirmar }: {
   );
 }
 
-// ---------- Corregir un pago (contador y super administrador) ----------
+// ---------- Corregir un pago (administrador y super administrador) ----------
 
 function FormularioEditarPago({ pago, alCerrar, alGuardar }: { pago: Pago; alCerrar: () => void; alGuardar: () => void }) {
   const avisos = useAvisos();
@@ -304,6 +304,8 @@ function Detalle({ id }: { id: number }) {
   const navegar = useNavigate();
   const [params, setParams] = useSearchParams();
   const consulta = useDatos<VentaDetalle>(`/ventas/${id}`);
+  // Al imprimir la venta sale su estado de cuenta: el PDF se llama "Estado de cuenta - <cliente>".
+  useNombreArchivo(consulta.datos ? `Estado de cuenta - ${consulta.datos.cliente.nombre}` : null);
   const historial = useDatos<EntradaRegistro[]>(`/ventas/${id}/historial`);
   const [pestana, setPestana] = useState<'cuotas' | 'pagos' | 'documentos' | 'historial'>(params.get('ver') === 'historial' ? 'historial' : 'cuotas');
   const [pagando, setPagando] = useState(false);
@@ -582,7 +584,7 @@ function Detalle({ id }: { id: number }) {
 
         {/* Versión impresa: estado de cuenta con la tabla completa */}
         <div className="hidden text-stone-900 print:block">
-          <Membrete titulo={hayCuotas ? 'Tabla de amortización' : 'Estado de cuenta'} subtitulo={`Emitida el ${fechaLarga(config.hoy)}`} />
+          <Membrete titulo={hayCuotas ? 'Tabla de amortización' : 'Estado de cuenta'} fecha={config.hoy} />
           <div className="mb-4 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
             <div><span className="text-stone-600">Cliente:</span> {cliente.nombre}</div>
             <div><span className="text-stone-600">RUT:</span> {formatearRut(cliente.rut) || '—'}</div>

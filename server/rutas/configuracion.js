@@ -72,7 +72,7 @@ rutasConfiguracion.put('/config/empresa', requiere('empresa'), (req, res) => {
   res.json({ ok: true, cambios: cambios.length });
 });
 
-// Parámetros contables del crédito y la cobranza: contador y super administrador.
+// Parámetros contables del crédito y la cobranza: administrador y super administrador.
 rutasConfiguracion.put('/config/credito', requiere('contabilidad'), (req, res) => {
   const credito = leer(req.body?.credito, {
     tasa_mensual: decimal({ min: 0, max: 15, def: 0 }),

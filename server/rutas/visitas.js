@@ -43,14 +43,14 @@ rutasVisitas.get('/visitas', (req, res) => {
       desde, hasta,
     ).map(({ creador_nombre, creador_rol, ...v }) => {
       const parcela_ids = JSON.parse(v.parcela_ids).filter((id) => numeros.has(id));
-      // "Agendada por Luis Díaz (Abogado)"
+      // "Agendada por Luis Díaz (Usuario)"
       const agendada_por = creador_nombre ? `${creador_nombre} (${PERFILES[creador_rol] ?? creador_rol})` : null;
       return { ...v, parcela_ids, parcelas: parcela_ids.map((id) => numeros.get(id)), agendada_por };
     }),
   );
 });
 
-// Quien no puede modificar todas las visitas (el abogado) agenda a su nombre y solo cambia las que agendó.
+// Quien no puede modificar todas las visitas (el usuario) agenda a su nombre y solo cambia las que agendó.
 function visitaModificable(req, id) {
   const actual = db.get('SELECT * FROM visitas WHERE id = ?', id);
   if (!actual) throw new ErrorApp('La visita no existe', 404);

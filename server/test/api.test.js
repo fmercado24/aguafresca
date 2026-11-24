@@ -32,7 +32,7 @@ const VENCIDAS = VENCIMIENTOS.filter((f) => f < HOY).length;
 /** Cliente HTTP mínimo que conserva la cookie de sesión. */
 function cliente() {
   let cookie = '';
-  return async function pedir(metodo, ruta, cuerpo, extra = {}) {
+  const pedir = async function pedir(metodo, ruta, cuerpo, extra = {}) {
     const r = await fetch(base + ruta, {
       method: metodo,
       headers: { 'Content-Type': 'application/json', 'X-AF': '1', ...(cookie ? { Cookie: cookie } : {}), ...extra.headers },
@@ -44,7 +44,10 @@ function cliente() {
     const datos = tipo.includes('json') ? await r.json().catch(() => null) : await r.text();
     return { estado: r.status, datos, tipo };
   };
+  pedir.cookie = () => cookie;
+  return pedir;
 }
+const cookieDe = async (c) => c.cookie();
 
 const admin = cliente();     // super administrador
 const abogado = cliente();   // ldiaz
@@ -81,34 +84,48 @@ test('sesión: exige autenticación y cabecera anti-CSRF', async () => {
 test('cuentas: son exactamente tres, cada una con sus permisos', async () => {
   const a = ok(await abogado('POST', '/auth/login', { usuario: 'ldiaz', password: 'clave-abogado-1' }));
   const c = ok(await contador('POST', '/auth/login', { usuario: 'pmercado', password: 'clave-contador-1' }));
-  assert.deepEqual([a.rol, c.rol], ['abogado', 'contador']);
-  assert.deepEqual(a.permisos, ['cotizaciones', 'informar_ventas', 'clientes_esenciales', 'visitas', 'documentos', 'plantillas', 'registro_duenos', 'datos_personales', 'avisos_visitas']);
-  assert.deepEqual(c.permisos, ['operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'amortizacion', 'contabilidad', 'precios', 'registro_duenos', 'datos_personales', 'avisos_visitas']);
-  assert.ok(ok(await admin('GET', '/auth/yo')).permisos.includes('empresa'));
+  assert.deepEqual([a.rol, a.perfil, c.rol, c.perfil], ['usuario', 'Usuario', 'admin', 'Administrador']);
+  assert.deepEqual(a.permisos, ['cotizaciones', 'informar_ventas', 'clientes_esenciales', 'visitas', 'documentos', 'registro_duenos', 'datos_personales', 'avisos_visitas']);
+  assert.deepEqual(c.permisos, [
+    'operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'empresa', 'parcelas', 'precios',
+    'plantillas', 'amortizacion', 'contabilidad', 'registro_duenos', 'datos_personales', 'avisos_visitas',
+  ]);
+  const yo = ok(await admin('GET', '/auth/yo'));
+  assert.equal(yo.perfil, 'Super administrador');
+  // El super administrador puede todo lo del administrador y además las cuentas y el sistema.
+  const deDuenos = ['registro_duenos', 'datos_personales', 'avisos_visitas'];
+  assert.ok(c.permisos.filter((p) => !deDuenos.includes(p)).every((p) => yo.permisos.includes(p)));
+  assert.ok(['administracion', 'sistema'].every((p) => yo.permisos.includes(p) && !c.permisos.includes(p)));
 
   const cuentas = ok(await admin('GET', '/usuarios'));
   assert.deepEqual(cuentas.map((x) => x.usuario), ['admin', 'ldiaz', 'pmercado']);
+  assert.deepEqual(cuentas.map((x) => x.perfil), ['Super administrador', 'Usuario', 'Administrador']);
   assert.equal(ok(await abogado('GET', '/usuarios'))[0].usuario, undefined, 'solo el super administrador ve los nombres de usuario');
   assert.equal((await admin('POST', '/usuarios', { nombre: 'Otra', usuario: 'otra', password: 'otra-clave-1' })).estado, 404, 'no se crean cuentas');
   assert.equal((await admin('DELETE', `/usuarios/${cuentas[1].id}`)).estado, 404, 'no se eliminan cuentas');
 
-  // Datos sensibles de la empresa y precios: solo el super administrador.
+  // Datos de la empresa y parcelas: administrador y super administrador (el usuario no).
   const empresa = { empresa: { razon_social: 'Agua Fresca SpA' }, proyecto: { nombre: 'Fundo Entre Ríos' } };
   assert.equal((await abogado('PUT', '/config/empresa', empresa)).estado, 403);
-  assert.equal((await contador('PUT', '/config/empresa', empresa)).estado, 403);
-  assert.equal((await contador('POST', '/parcelas', { numero: '99', superficie_m2: 5000, precio: 1 })).estado, 403);
-  // Parámetros contables: contador y super administrador.
+  assert.equal(ok(await contador('PUT', '/config/empresa', empresa)).cambios, 0);
+  assert.equal((await abogado('POST', '/parcelas', { numero: '99', superficie_m2: 5000, precio: 1 })).estado, 403);
+  // Parámetros contables: administrador y super administrador.
   const credito = { credito: { tasa_mensual: 1, tasa_mora_mensual: 0, n_cuotas: 36, pie_monto: 3_000_000, dias_validez_cotizacion: 15, dias_plazo_carta: 10 } };
   assert.equal((await abogado('PUT', '/config/credito', credito)).estado, 403);
   ok(await contador('PUT', '/config/credito', credito));
-  // Plantillas: abogado y super administrador.
-  assert.equal((await contador('POST', '/plantillas', { tipo: 'promesa', nombre: 'X', contenido: '<p>x</p>' })).estado, 403);
-  // El abogado ve todo (ventas, deudores, cobranza), pero no modifica nada que tenga que ver con dinero.
+  // Plantillas: administrador y super administrador; el usuario ya no.
+  assert.equal((await abogado('POST', '/plantillas', { tipo: 'promesa', nombre: 'X', contenido: '<p>x</p>' })).estado, 403);
+  // Cuentas y sistema: solo el super administrador.
+  assert.equal((await contador('PUT', `/usuarios/${cuentas[1].id}`, { nombre: 'X' })).estado, 403);
+  assert.equal((await contador('POST', `/usuarios/${cuentas[1].id}/bloqueo`, { activo: false })).estado, 403);
+  assert.equal((await contador('GET', '/sistema/estado')).estado, 403);
+  assert.equal((await contador('GET', '/sistema/respaldo')).estado, 403);
+  // El usuario ve todo (ventas, deudores, cobranza), pero no modifica nada que tenga que ver con dinero.
   for (const [metodo, ruta, cuerpo] of [
     ['POST', '/clientes', { nombre: 'X' }], ['PUT', '/clientes/1', { nombre: 'X' }], ['POST', '/ventas', {}], ['POST', '/ventas/1/pagos', {}],
     ['POST', '/clientes/1/gestiones', {}], ['POST', '/parcelas/1/estado', { estado: 'reservada' }], ['PUT', '/parcelas/1/precio', { precio: 1 }],
     ['POST', '/parcelas/masivo', { ids: [1], accion: 'precio', monto: 1000 }],
-  ]) assert.equal((await abogado(metodo, ruta, cuerpo)).estado, 403, `el abogado no puede ${metodo} ${ruta}`);
+  ]) assert.equal((await abogado(metodo, ruta, cuerpo)).estado, 403, `el usuario no puede ${metodo} ${ruta}`);
   ok(await abogado('GET', '/ventas'));
   ok(await abogado('GET', '/cobranza/atrasadas'));
   // Registro de cambios: el super administrador lo ve completo; los dueños, solo los cambios de los dueños.
@@ -463,16 +480,17 @@ test('pagos: el contador corrige un pago y el informe separa capital e interés'
   assert.equal(corregido.capital, pago.monto - 1000 - d2.cuotas[1].interes);
 });
 
-test('plantillas: el abogado las modifica y puede volver a una versión anterior', async () => {
+test('plantillas: el administrador las modifica y puede volver a una versión anterior', async () => {
   const lista = ok(await abogado('GET', '/plantillas'));
   const p = ok(await abogado('GET', `/plantillas/${lista[0].id}`));
-  assert.equal((await abogado('PUT', `/plantillas/${p.id}`, { tipo: p.tipo, nombre: p.nombre, contenido: p.contenido })).estado, 400, 'sin cambios');
-  ok(await abogado('PUT', `/plantillas/${p.id}`, { tipo: p.tipo, nombre: p.nombre, contenido: '<p>Texto nuevo</p>' }));
+  assert.equal((await contador('PUT', `/plantillas/${p.id}`, { tipo: p.tipo, nombre: p.nombre, contenido: p.contenido })).estado, 400, 'sin cambios');
+  assert.equal((await abogado('PUT', `/plantillas/${p.id}`, { tipo: p.tipo, nombre: p.nombre, contenido: '<p>Texto nuevo</p>' })).estado, 403, 'el usuario no las modifica');
+  ok(await contador('PUT', `/plantillas/${p.id}`, { tipo: p.tipo, nombre: p.nombre, contenido: '<p>Texto nuevo</p>' }));
   const versiones = ok(await abogado('GET', `/plantillas/${p.id}/versiones`));
   assert.equal(versiones.length, 1);
-  assert.equal(versiones[0].usuario, 'Luis Díaz');
-  assert.equal((await contador('POST', `/plantillas/${p.id}/restaurar/${versiones[0].id}`)).estado, 403);
-  ok(await abogado('POST', `/plantillas/${p.id}/restaurar/${versiones[0].id}`));
+  assert.equal(versiones[0].usuario, 'Patricio Mercado');
+  assert.equal((await abogado('POST', `/plantillas/${p.id}/restaurar/${versiones[0].id}`)).estado, 403);
+  ok(await contador('POST', `/plantillas/${p.id}/restaurar/${versiones[0].id}`));
   assert.equal(ok(await abogado('GET', `/plantillas/${p.id}`)).contenido, p.contenido);
   assert.equal(ok(await abogado('GET', `/plantillas/${p.id}/versiones`)).length, 2, 'la versión reemplazada también se conserva');
 });
@@ -496,7 +514,7 @@ test('registro de cambios: el super administrador ve quién cambió qué', async
 });
 
 test('plano del loteo: crea las parcelas del topógrafo y no duplica al volver a cargarlo', async () => {
-  assert.equal((await contador('GET', '/mapa/loteo')).estado, 403);
+  assert.equal((await abogado('GET', '/mapa/loteo')).estado, 403);
   assert.equal((await abogado('POST', '/mapa/loteo')).estado, 403);
   const resumen = ok(await admin('GET', '/mapa/loteo'));
   assert.equal(resumen.lotes, 185);
@@ -534,7 +552,7 @@ test('cambios en bloque: precio por m², precio fijo y sector, con confirmación
   const lista = ok(await admin('GET', '/parcelas'));
   const sectorA = lista.filter((p) => p.sector === 'Manzana B').map((p) => p.id);
   assert.equal(sectorA.length, 12);
-  assert.equal((await contador('POST', '/parcelas/masivo', { ids: sectorA, accion: 'sector', sector: 'X' })).estado, 403, 'sector y códigos: solo el super administrador');
+  assert.equal((await abogado('POST', '/parcelas/masivo', { ids: sectorA, accion: 'sector', sector: 'X' })).estado, 403, 'sector y códigos: administrador y super administrador');
   assert.equal((await admin('POST', '/parcelas/masivo', { ids: sectorA, accion: 'precio_m2' })).estado, 400);
   assert.equal((await admin('POST', '/parcelas/masivo', { ids: [], accion: 'precio', monto: 1 })).estado, 400);
 
@@ -564,18 +582,18 @@ test('cambios en bloque: precio por m², precio fijo y sector, con confirmación
   assert.ok(b.some((x) => x.accion === 'loteo_cargado'));
 });
 
-test('dueños: precios (solo el contador), registro de los cambios de ambos y datos personales en los documentos', async () => {
+test('dueños: precios (solo el administrador), registro de los cambios de ambos y datos personales en los documentos', async () => {
   const lista = ok(await contador('GET', '/parcelas'));
   const c3 = lista.find((x) => x.numero === 'H-3');
-  // El contador cambia precios; el abogado no (es dinero). Ninguno de los dos edita el resto de la parcela.
-  assert.equal((await contador('PUT', `/parcelas/${c3.id}`, { ...c3, precio: 1 })).estado, 403);
+  // El administrador cambia precios; el usuario no (es dinero) ni edita la parcela.
+  assert.equal((await abogado('PUT', `/parcelas/${c3.id}`, { ...c3, precio: 1 })).estado, 403);
   assert.equal((await abogado('PUT', `/parcelas/${c3.id}/precio`, { precio: 1 })).estado, 403);
   assert.equal(ok(await contador('PUT', `/parcelas/${c3.id}/precio`, { precio: 22_500_000 })).cambios, 1);
   assert.equal(ok(await contador('PUT', `/parcelas/${c3.id}/precio`, { precio: 22_500_000 })).cambios, 0);
   const sectorC = lista.filter((x) => x.sector === 'Manzana H').map((x) => x.id);
   assert.equal(ok(await contador('POST', '/parcelas/masivo', { ids: sectorC, accion: 'precio_m2', monto: 4_100 })).cambiadas, 9);
-  assert.equal((await contador('POST', '/parcelas/masivo', { ids: sectorC, accion: 'sector', sector: 'Otro' })).estado, 403);
-  assert.equal((await abogado('POST', '/mapa/loteo')).estado, 403, 'el mapa sigue siendo del super administrador');
+  assert.equal((await abogado('POST', '/parcelas/masivo', { ids: sectorC, accion: 'sector', sector: 'Otro' })).estado, 403);
+  assert.equal((await abogado('POST', '/mapa/loteo')).estado, 403, 'el mapa es del administrador y del super administrador');
 
   // Datos personales: solo los dueños, cada uno los suyos.
   assert.equal((await admin('GET', '/auth/datos-personales')).estado, 403);
@@ -620,7 +638,8 @@ test('dueños: precios (solo el contador), registro de los cambios de ambos y da
   assert.match(contrato, /chilena, divorciado, abogado/);
   // Variables de cada dueño para usar en cualquier plantilla.
   const variables = ok(await abogado('GET', '/plantillas/variables')).flatMap((g) => g.variables.map((v) => v.clave));
-  for (const v of ['representante.nombre', 'abogado.rut', 'contador.domicilio']) assert.ok(variables.includes(v), `falta la variable ${v}`);
+  for (const v of ['representante.nombre', 'ldiaz.rut', 'pmercado.domicilio']) assert.ok(variables.includes(v), `falta la variable ${v}`);
+  assert.ok(!variables.some((v) => /^(abogado|contador)\./.test(v)), 'el catálogo ya no habla de abogado ni contador');
   // Volver a escribir el representante a mano.
   ok(await admin('PUT', '/config/empresa', { ...empresa, empresa: { ...empresa.empresa, representante_cuenta: '' } }));
   assert.equal(ok(await contador('GET', '/config')).empresa.representante, 'Rosa Ríos Pérez', 'vuelve a usar el nombre escrito a mano');
@@ -667,11 +686,11 @@ test('visitas: dicen quién las agendó, el abogado modifica solo las suyas y lo
   // El abogado agenda a su nombre (aunque indique a otra persona para atender).
   const id = ok(await abogado('POST', '/visitas', { inicio: `${manana}T10:00`, nombre: 'Familia Rojas', vendedor_id: yoContador.id }), 201).id;
   let v = ok(await contador('GET', `/visitas?desde=${manana}&hasta=${manana}`)).find((x) => x.id === id);
-  assert.equal(v.agendada_por, 'Luis Díaz (Abogado)');
+  assert.equal(v.agendada_por, 'Luis Díaz (Usuario)');
   assert.equal(v.vendedor, 'Luis Díaz', 'atiende quien la agendó');
   // El contador recibe el aviso de la visita nueva; quien la agendó, no.
   let avisos = ok(await contador('GET', '/avisos'));
-  assert.ok(avisos.avisos.some((a) => a.tipo === 'visita_creada' && /Luis Díaz \(Abogado\) agendó la visita de Familia Rojas/.test(a.detalle) && a.enlace === `/visitas?dia=${manana}`));
+  assert.ok(avisos.avisos.some((a) => a.tipo === 'visita_creada' && /Luis Díaz \(Usuario\) agendó la visita de Familia Rojas/.test(a.detalle) && a.enlace === `/visitas?dia=${manana}`));
   assert.ok(!ok(await abogado('GET', '/avisos')).avisos.some((a) => a.tipo === 'visita_creada'));
   // Recordatorio de las visitas de las próximas 24 horas, para los dos dueños y una sola vez.
   const enUnRato = `${HOY}T23:59`;
@@ -689,9 +708,9 @@ test('visitas: dicen quién las agendó, el abogado modifica solo las suyas y lo
   assert.equal((await abogado('DELETE', `/visitas/${pronto}`)).estado, 403);
   ok(await contador('PUT', `/visitas/${id}`, { inicio: `${manana}T12:00`, nombre: 'Familia Rojas', vendedor_id: yoContador.id }));
   v = ok(await contador('GET', `/visitas?desde=${manana}&hasta=${manana}`)).find((x) => x.id === id);
-  assert.deepEqual([v.vendedor, v.agendada_por], ['Patricio Mercado', 'Luis Díaz (Abogado)'], 'el contador puede reasignar; quien agendó no cambia');
+  assert.deepEqual([v.vendedor, v.agendada_por], ['Patricio Mercado', 'Luis Díaz (Usuario)'], 'el contador puede reasignar; quien agendó no cambia');
   avisos = ok(await abogado('GET', '/avisos'));
-  assert.ok(avisos.avisos.some((a) => a.tipo === 'visita_reprogramada' && /Patricio Mercado \(Contador\)/.test(a.detalle)));
+  assert.ok(avisos.avisos.some((a) => a.tipo === 'visita_reprogramada' && /Patricio Mercado \(Administrador\)/.test(a.detalle)));
   assert.ok(avisos.no_leidos > 0);
   ok(await abogado('POST', '/avisos/leidos', {}));
   assert.equal(ok(await abogado('GET', '/avisos')).no_leidos, 0);
@@ -732,8 +751,8 @@ test('cartas de cobranza: correo (modo de prueba, envío real y programado) y Wh
   const borrador = ok(await abogado('POST', '/documentos/confeccionar', { plantilla_id: carta.id, venta_id: ventaId }));
   const docId = ok(await abogado('POST', '/documentos', borrador), 201).id;
 
-  // El correo de envío solo lo configura el super administrador, y la contraseña nunca vuelve al navegador.
-  assert.equal((await contador('PUT', '/config/canales', { modo_prueba: false })).estado, 403);
+  // El correo de envío lo configuran el administrador o el super administrador, y la contraseña nunca vuelve al navegador.
+  assert.equal((await abogado('PUT', '/config/canales', { modo_prueba: false })).estado, 403);
   assert.equal(ok(await abogado('GET', '/config/canales')).modo_prueba, true, 'parte en modo de prueba');
   // En modo de prueba el correo se registra sin enviar.
   const simulado = ok(await abogado('POST', `/documentos/${docId}/enviar`, { canal: 'correo' }));
@@ -820,7 +839,7 @@ test('el abogado cotiza e informa la venta; el contador la registra y él recibe
   assert.equal((await abogado('PUT', `/cotizaciones/${cot}`, { parcela_id: libre.id })).estado, 409, 'no se modifica mientras espera');
   const aviso = ok(await contador('GET', '/avisos')).avisos.find((a) => a.tipo === 'venta_informada');
   assert.ok(aviso);
-  assert.match(aviso.detalle, /Luis Díaz \(Abogado\) informó la venta a Rosa Vidal Paz: \$24\.000\.000, pie \$4\.000\.000 y 24 cuotas/);
+  assert.match(aviso.detalle, /Luis Díaz \(Usuario\) informó la venta a Rosa Vidal Paz: \$24\.000\.000, pie \$4\.000\.000 y 24 cuotas/);
   assert.match(aviso.detalle, /paga el pie el lunes/);
   assert.equal(aviso.enlace, `/cotizaciones/${cot}`.replace('/cotizaciones/', '/ventas/nueva?cotizacion='));
   const pendientes = ok(await contador('GET', '/solicitudes-venta'));
@@ -964,7 +983,7 @@ test('avisos push: llegan cifrados a los equipos suscritos, aunque no estén usa
     assert.match(pedido.cabeceras.authorization, new RegExp(`^vapid t=[\\w-]+\\.[\\w-]+\\.[\\w-]+, k=${publica}$`));
     const aviso = equipo.descifrar(pedido.cuerpo);
     assert.match(aviso.titulo, /^Nueva visita: /);
-    assert.match(aviso.detalle, /Luis Díaz \(Abogado\) agendó la visita de Familia Push/);
+    assert.match(aviso.detalle, /Luis Díaz \(Usuario\) agendó la visita de Familia Push/);
     assert.equal(aviso.enlace, `/visitas?dia=${manana}`);
 
     // Aviso de prueba desde Mi cuenta.
@@ -1115,6 +1134,70 @@ test('Google Earth: enlace de red a un KML público con clave y sin nombres de c
   assert.notEqual(nueva, g.url_kml);
   assert.equal((await fetch(g.url_kml)).status, 404);
   assert.equal((await fetch(nueva)).status, 200);
+});
+
+test('documentos: el encabezado dice siempre "Punta Arenas" junto a la fecha', async () => {
+  assert.equal(ok(await contador('GET', '/config')).lugar_emision, 'Punta Arenas');
+  const plantillas = ok(await abogado('GET', '/plantillas'));
+  const carta = plantillas.find((p) => p.tipo === 'carta_cobranza');
+  const venta = ok(await contador('GET', '/ventas')).find((x) => x.estado === 'vigente');
+  const { contenido } = ok(await abogado('POST', '/documentos/confeccionar', { plantilla_id: carta.id, venta_id: venta.id }));
+  assert.match(contenido, /Punta Arenas, \d{1,2} de [a-z]+ de \d{4}/);
+  // Una plantilla guardada con el encabezado anterior (ciudad de la empresa) se corrige sola al actualizar.
+  const original = ok(await abogado('GET', `/plantillas/${carta.id}`));
+  const antigua = original.contenido.replace('{{lugar_emision}}, {{fecha_hoy}}', '{{empresa.ciudad}}, {{fecha_hoy}}');
+  ok(await contador('PUT', `/plantillas/${carta.id}`, { tipo: original.tipo, nombre: original.nombre, contenido: antigua }));
+  const sinFecha = plantillas.filter((p) => p.tipo === 'carta_cobranza')[1];
+  const otra = ok(await abogado('GET', `/plantillas/${sinFecha.id}`));
+  ok(await contador('PUT', `/plantillas/${sinFecha.id}`, { tipo: otra.tipo, nombre: otra.nombre, contenido: otra.contenido.replace(/<p style="text-align:right">[^<]*<\/p>/, '') }));
+  const { aplicarCorrecciones } = await import('../lib/correcciones.js');
+  const r = aplicarCorrecciones().find((x) => /Punta Arenas/.test(x.titulo));
+  assert.ok(r.corregidas.includes(original.nombre) && r.corregidas.includes(otra.nombre));
+  assert.match(ok(await abogado('GET', `/plantillas/${carta.id}`)).contenido, /\{\{lugar_emision\}\}, \{\{fecha_hoy\}\}/);
+  assert.match(ok(await abogado('GET', `/plantillas/${sinFecha.id}`)).contenido, /^<p style="text-align:right">\{\{lugar_emision\}\}, \{\{fecha_hoy\}\}<\/p>/, 'a la carta sin fecha se le agrega');
+  assert.equal(aplicarCorrecciones().length, 0, 'una sola vez');
+});
+
+test('super administrador: bloquea cuentas, cierra sesiones, ve el estado del sistema y descarga respaldos', async () => {
+  const cuentas = ok(await admin('GET', '/usuarios'));
+  const ldiaz = cuentas.find((c) => c.usuario === 'ldiaz');
+  const yo = cuentas.find((c) => c.usuario === 'admin');
+  assert.ok(ldiaz.sesiones >= 1 && ldiaz.activo === 1);
+  assert.equal((await admin('POST', `/usuarios/${yo.id}/bloqueo`, { activo: false })).estado, 409, 'no se bloquea al super administrador');
+  assert.equal((await admin('POST', `/usuarios/${ldiaz.id}/bloqueo`, {})).estado, 400);
+  // Bloqueada: se cierran sus sesiones y no puede volver a ingresar.
+  ok(await admin('POST', `/usuarios/${ldiaz.id}/bloqueo`, { activo: false }));
+  assert.equal((await abogado('GET', '/auth/yo')).estado, 401);
+  const intento = await abogado('POST', '/auth/login', { usuario: 'ldiaz', password: 'clave-abogado-1' });
+  assert.equal(intento.estado, 403);
+  assert.match(intento.datos.error, /bloqueada/);
+  assert.equal((await abogado('POST', '/auth/login', { usuario: 'ldiaz', password: 'otra-clave' })).estado, 401, 'sin la contraseña no se sabe que está bloqueada');
+  const bloqueada = ok(await admin('GET', '/usuarios')).find((c) => c.usuario === 'ldiaz');
+  assert.deepEqual([bloqueada.activo, bloqueada.sesiones], [0, 0], 'el super administrador la sigue viendo');
+  assert.ok(!ok(await contador('GET', '/usuarios')).some((c) => c.nombre === 'Luis Díaz'), 'no aparece para asignar visitas');
+  ok(await admin('POST', `/usuarios/${ldiaz.id}/bloqueo`, { activo: true }));
+  ok(await abogado('POST', '/auth/login', { usuario: 'ldiaz', password: 'clave-abogado-1' }));
+  // Cerrar las sesiones abiertas de una cuenta.
+  assert.equal(ok(await admin('POST', `/usuarios/${ldiaz.id}/cerrar-sesiones`)).cerradas, 1);
+  assert.equal((await abogado('GET', '/auth/yo')).estado, 401);
+  ok(await abogado('POST', '/auth/login', { usuario: 'ldiaz', password: 'clave-abogado-1' }));
+  const registro = ok(await admin('GET', '/bitacora')).map((e) => e.accion);
+  for (const a of ['cuenta_bloqueada', 'cuenta_reactivada', 'sesiones_cerradas']) assert.ok(registro.includes(a), a);
+
+  // Estado del sistema.
+  const estado = ok(await admin('GET', '/sistema/estado'));
+  assert.equal(estado.base.migracion, 8);
+  assert.ok(estado.base.registros.parcelas > 0);
+  assert.deepEqual(estado.cuentas.map((c) => c.perfil), ['Super administrador', 'Usuario', 'Administrador']);
+  assert.ok(estado.correcciones.length >= 5 && estado.correcciones.every((c) => c.titulo));
+  // Respaldo al momento: una base SQLite completa.
+  const respuesta = await fetch(`${base}/sistema/respaldo`, { headers: { 'X-AF': '1', Cookie: await cookieDe(admin) } });
+  assert.equal(respuesta.status, 200);
+  assert.match(respuesta.headers.get('content-disposition'), /respaldo-aguafresca-\d{4}-\d{2}-\d{2}-\d{4}\.db/);
+  const bytes = Buffer.from(await respuesta.arrayBuffer());
+  assert.equal(bytes.subarray(0, 15).toString(), 'SQLite format 3');
+  assert.ok(ok(await admin('GET', '/bitacora')).some((e) => e.accion === 'respaldo_descargado'));
+  assert.equal((await admin('GET', '/sistema/respaldos/..%2Faguafresca.db')).estado, 404);
 });
 
 test('cierre de sesión', async () => {

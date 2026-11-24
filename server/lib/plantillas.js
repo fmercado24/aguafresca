@@ -1,11 +1,11 @@
 import sanitizeHtml from 'sanitize-html';
-import { leerConfiguracion } from './configuracion.js';
+import { leerConfiguracion, LUGAR_EMISION } from './configuracion.js';
 import { detalleVenta } from './creditos.js';
 import { db } from '../db.js';
 import { hoy, sumarDias, fechaLarga, fechaCorta } from './fechas.js';
 import { pesos, montoEnPalabras, numeroEnPalabras } from './finanzas.js';
 import { formatearRut } from './rut.js';
-import { representanteDe, datosDeRol } from './datos-personales.js';
+import { representanteDe, datosDeCuenta } from './datos-personales.js';
 import { ErrorApp } from './validar.js';
 import { bloqueFirmaHtml } from './firma.js';
 
@@ -55,6 +55,7 @@ const DATOS_CLIENTE = {
 // Catálogo que se muestra en el editor de plantillas ("Insertar dato").
 export const CATALOGO = [
   { grupo: 'General', variables: [
+    ['lugar_emision', 'Lugar de emisión de los documentos (Punta Arenas)'],
     ['fecha_hoy', 'Fecha de hoy, en palabras'],
     ['fecha_hoy_corta', 'Fecha de hoy (dd-mm-aaaa)'],
     ['fecha_limite_pago', 'Fecha límite para regularizar (hoy + plazo configurado)'],
@@ -73,8 +74,8 @@ export const CATALOGO = [
     ['firma', 'Pie de firma del representante legal, con su firma digital'],
   ] },
   { grupo: 'Representante legal (de sus datos personales si es uno de los dueños)', variables: variablesDePersona('representante') },
-  { grupo: 'Abogado · ldiaz (sus datos personales)', variables: variablesDePersona('abogado') },
-  { grupo: 'Contador · pmercado (sus datos personales)', variables: variablesDePersona('contador') },
+  { grupo: 'Cuenta ldiaz (sus datos personales)', variables: variablesDePersona('ldiaz') },
+  { grupo: 'Cuenta pmercado (sus datos personales)', variables: variablesDePersona('pmercado') },
   { grupo: 'Proyecto', variables: [
     ['proyecto.nombre', 'Nombre del proyecto'],
     ['proyecto.ubicacion', 'Ubicación'],
@@ -161,6 +162,7 @@ export function valoresPara(ventaId) {
     v[clave] = s ? escapar(s).replace(/\n/g, '<br>') : EN_BLANCO;
   };
 
+  poner('lugar_emision', LUGAR_EMISION);
   poner('fecha_hoy', fechaLarga(fechaHoy));
   poner('fecha_hoy_corta', fechaCorta(fechaHoy));
   poner('fecha_limite_pago', fechaLarga(sumarDias(fechaHoy, Number(cfg.credito.dias_plazo_carta) || 10)));
@@ -181,8 +183,11 @@ export function valoresPara(ventaId) {
     }
   };
   persona('representante', representanteDe(cfg.empresa));
-  persona('abogado', datosDeRol('abogado'));
-  persona('contador', datosDeRol('contador'));
+  persona('ldiaz', datosDeCuenta('ldiaz'));
+  persona('pmercado', datosDeCuenta('pmercado'));
+  // Nombres anteriores de las mismas variables (cuando los perfiles eran abogado y contador): siguen funcionando.
+  persona('abogado', datosDeCuenta('ldiaz'));
+  persona('contador', datosDeCuenta('pmercado'));
 
   for (const k of ['nombre', 'nacionalidad', 'estado_civil', 'profesion', 'direccion', 'comuna', 'ciudad', 'telefono', 'email']) {
     poner(`cliente.${k}`, cliente[k]);

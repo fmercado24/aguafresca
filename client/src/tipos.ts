@@ -1,15 +1,17 @@
 // Formas de los datos que entrega la API.
 
-export type Rol = 'superadmin' | 'abogado' | 'contador';
+/** superadmin: cuenta admin · admin: Administrador (pmercado) · usuario: Usuario (ldiaz). */
+export type Rol = 'superadmin' | 'admin' | 'usuario';
 
 /**
  * empresa: datos sensibles de la empresa · parcelas: crear parcelas, sectores y mapa · precios: precio de lista de las parcelas
- * administracion: cuentas y registro de cambios completo · plantillas: plantillas legales · amortizacion: tabla de amortización
+ * administracion: cuentas (incluido bloquearlas) y registro de cambios completo · sistema: estado del sistema y respaldos
+ * plantillas: plantillas legales · amortizacion: tabla de amortización
  * contabilidad: tasas, pagos, anulaciones · registro_duenos: registro de los cambios de los dueños
  * datos_personales: los dueños completan sus datos para los documentos legales
  */
 export type Permiso = 'operaciones' | 'cotizaciones' | 'informar_ventas' | 'clientes_esenciales' | 'visitas' | 'visitas_todas' | 'documentos'
-  | 'empresa' | 'parcelas' | 'precios' | 'administracion' | 'plantillas' | 'amortizacion' | 'contabilidad'
+  | 'empresa' | 'parcelas' | 'precios' | 'administracion' | 'sistema' | 'plantillas' | 'amortizacion' | 'contabilidad'
   | 'registro_duenos' | 'datos_personales' | 'avisos_visitas';
 
 /** Cuenta con sesión iniciada. */
@@ -29,6 +31,9 @@ export interface Cuenta {
   usuario?: string;
   rol?: Rol;
   perfil?: string;
+  /** Solo para el super administrador: 0 = bloqueada, y cuántas sesiones tiene abiertas. */
+  activo?: number;
+  sesiones?: number;
   /** Solo para el super administrador, en las cuentas de los dueños. */
   datos?: { nombre_completo: string; rut: string; completos: number; total: number };
 }
@@ -122,6 +127,8 @@ export interface Config {
     dias_plazo_carta: number;
   };
   plano: Plano | null;
+  /** Lugar que encabeza los documentos junto a la fecha (siempre "Punta Arenas"). */
+  lugar_emision: string;
   /** Firma del representante legal (imagen), si está cargada. */
   firma: { version: number } | null;
   hoy: string;
@@ -448,7 +455,7 @@ export interface Visita {
   estado: EstadoVisita;
   notas: string;
   creado_por: number | null;
-  /** "Luis Díaz (Abogado)" */
+  /** "Luis Díaz (Usuario)" */
   agendada_por: string | null;
 }
 
@@ -591,7 +598,7 @@ export interface CotizacionDetalle {
   cotizacion: Cotizacion;
   parcela: Pick<Parcela, 'id' | 'numero' | 'sector' | 'superficie_m2' | 'precio' | 'estado' | 'rol_sii' | 'descripcion'>;
   simulacion: Simulacion;
-  /** Último aviso de venta al contador hecho a partir de esta cotización. */
+  /** Último aviso de venta al administrador hecho a partir de esta cotización. */
   solicitud: {
     id: number; estado: EstadoSolicitud; notas: string; creado_en: string; resuelto_en: string | null; motivo: string;
     venta_id: number | null; reservo_parcela: number; informada_por: string | null; resuelta_por: string | null;
@@ -600,7 +607,7 @@ export interface CotizacionDetalle {
 
 export type EstadoSolicitud = 'pendiente' | 'registrada' | 'descartada';
 
-/** Venta que el abogado informó al contador para que la registre. */
+/** Venta que el usuario (ldiaz) informó al administrador para que la registre. */
 export interface SolicitudVenta {
   id: number;
   cotizacion_id: number;
@@ -696,4 +703,17 @@ export interface InfoGoogleEarth {
   proyecto_url: string;
   url_kml: string;
   centro: { lat: number; lng: number } | null;
+}
+
+/** Pantalla Sistema (super administrador). */
+export interface EstadoSistema {
+  version: { commit: string; fecha: string; mensaje: string } | null;
+  node: string;
+  iniciado: string;
+  carpeta_datos: string;
+  base: { bytes: number; migracion: number; registros: { parcelas: number; clientes: number; ventas: number; pagos: number; documentos: number } };
+  disco: { libre: number; total: number } | null;
+  cuentas: { usuario: string; nombre: string; rol: Rol; perfil: string; activo: number; sesiones: number }[];
+  correcciones: { id: string; titulo: string; aplicada: boolean }[];
+  respaldos: { archivo: string; bytes: number; fecha: string }[];
 }

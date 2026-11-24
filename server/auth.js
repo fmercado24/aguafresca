@@ -54,7 +54,7 @@ export function cerrarSesion(req, res) {
 /** Cierra las demás sesiones de un usuario (p. ej. al cambiar su contraseña). */
 export function cerrarOtrasSesiones(req, usuarioId) {
   const token = leerCookie(req, COOKIE);
-  db.run('DELETE FROM sesiones WHERE usuario_id = ? AND token_hash <> ?', usuarioId, token ? hashToken(token) : '');
+  return Number(db.run('DELETE FROM sesiones WHERE usuario_id = ? AND token_hash <> ?', usuarioId, token ? hashToken(token) : '').changes);
 }
 
 export function autenticar(req, res, next) {
@@ -76,16 +76,16 @@ export function autenticar(req, res, next) {
 
 export const CUENTAS = [
   { usuario: 'admin', nombre: 'Administrador', rol: 'superadmin' },
-  { usuario: 'ldiaz', nombre: 'Luis Díaz', rol: 'abogado' },
-  { usuario: 'pmercado', nombre: 'Patricio Mercado', rol: 'contador' },
+  { usuario: 'ldiaz', nombre: 'Luis Díaz', rol: 'usuario' },
+  { usuario: 'pmercado', nombre: 'Patricio Mercado', rol: 'admin' },
 ];
 
-export const PERFILES = { superadmin: 'Super administrador', abogado: 'Abogado', contador: 'Contador' };
+export const PERFILES = { superadmin: 'Super administrador', admin: 'Administrador', usuario: 'Usuario' };
 
 // Todas las cuentas ven todo: parcelas, clientes y deudores, ventas, cobranza, flujo e informes. Para modificar:
 //   operaciones      clientes y su ficha completa, gestiones de cobranza, ventas, registrar pagos, reservar parcelas
 //   cotizaciones     crear y modificar cotizaciones
-//   informar_ventas  avisar al contador una venta cerrada (a partir de una cotización) para que él la registre
+//   informar_ventas  avisar al administrador una venta cerrada (a partir de una cotización) para que la registre
 //   clientes_esenciales  completar los datos esenciales de un cliente (identificación y domicilio) para los documentos
 //   visitas          agendar visitas (a su nombre)
 //   visitas_todas    modificar también las visitas que agendaron otras personas y elegir quién atiende
@@ -93,7 +93,8 @@ export const PERFILES = { superadmin: 'Super administrador', abogado: 'Abogado',
 //   empresa          datos sensibles de la empresa y el proyecto; correo para enviar cartas
 //   parcelas         crear parcelas, sectores y códigos, editar el mapa
 //   precios          cambiar el precio de lista de las parcelas (una o en bloque)
-//   administracion   contraseñas y nombres de las cuentas, registro de cambios completo, eliminar clientes
+//   administracion   contraseñas, nombres y bloqueo de las cuentas, registro de cambios completo, eliminar clientes
+//   sistema          estado del sistema y respaldos de la base de datos desde la web
 //   plantillas       modificar las plantillas de documentos legales
 //   amortizacion     modificar la tabla de amortización de una venta
 //   contabilidad     tasas de interés y mora, corregir o anular pagos, anular ventas, envío programado de cartas
@@ -102,32 +103,41 @@ export const PERFILES = { superadmin: 'Super administrador', abogado: 'Abogado',
 //   datos_personales completar sus datos personales, que se usan en los documentos legales
 //   avisos_visitas   avisos en la aplicación de las visitas agendadas
 export const PERMISOS = {
-  superadmin: ['operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'empresa', 'parcelas', 'precios', 'administracion', 'plantillas', 'amortizacion', 'contabilidad'],
-  // El abogado ve todo, pero no registra nada que tenga que ver con dinero: cotiza, informa al contador las ventas que cierra,
-  // completa los datos esenciales de los clientes, agenda visitas a su nombre y trabaja los documentos legales.
-  abogado: ['cotizaciones', 'informar_ventas', 'clientes_esenciales', 'visitas', 'documentos', 'plantillas', 'registro_duenos', 'datos_personales', 'avisos_visitas'],
-  contador: ['operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'amortizacion', 'contabilidad', 'precios', 'registro_duenos', 'datos_personales', 'avisos_visitas'],
+  // Super administrador (cuenta admin): todo, más las cuentas, el registro completo, el estado del sistema y los respaldos.
+  superadmin: [
+    'operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'empresa', 'parcelas', 'precios',
+    'administracion', 'sistema', 'plantillas', 'amortizacion', 'contabilidad',
+  ],
+  // Administrador (pmercado, dueño): todo lo de la operación y la configuración de la empresa, salvo las cuentas y el sistema.
+  admin: [
+    'operaciones', 'cotizaciones', 'clientes_esenciales', 'visitas', 'visitas_todas', 'documentos', 'empresa', 'parcelas', 'precios',
+    'plantillas', 'amortizacion', 'contabilidad', 'registro_duenos', 'datos_personales', 'avisos_visitas',
+  ],
+  // Usuario (ldiaz, dueño): ve todo, pero no registra nada que tenga que ver con dinero: cotiza, informa al administrador las
+  // ventas que cierra, completa los datos esenciales de los clientes, agenda visitas a su nombre y confecciona documentos.
+  usuario: ['cotizaciones', 'informar_ventas', 'clientes_esenciales', 'visitas', 'documentos', 'registro_duenos', 'datos_personales', 'avisos_visitas'],
 };
 
 /** Perfiles de las cuentas de los dueños. */
 export const ROLES_DUENOS = Object.keys(PERMISOS).filter((rol) => PERMISOS[rol].includes('datos_personales'));
 
 const QUIEN_PUEDE = {
-  operaciones: 'el contador o el super administrador',
-  cotizaciones: 'el abogado, el contador o el super administrador',
-  informar_ventas: 'el abogado',
-  clientes_esenciales: 'el abogado, el contador o el super administrador',
+  operaciones: 'el administrador o el super administrador',
+  cotizaciones: 'cualquier cuenta',
+  informar_ventas: 'la cuenta de usuario',
+  clientes_esenciales: 'cualquier cuenta',
   visitas: 'cualquier cuenta',
-  visitas_todas: 'el contador o el super administrador (el abogado modifica solo las visitas que agendó)',
+  visitas_todas: 'el administrador o el super administrador (el usuario modifica solo las visitas que agendó)',
   documentos: 'cualquier cuenta',
   avisos_visitas: 'los dueños',
-  empresa: 'el super administrador',
-  parcelas: 'el super administrador',
-  precios: 'el contador o el super administrador',
+  empresa: 'el administrador o el super administrador',
+  parcelas: 'el administrador o el super administrador',
+  precios: 'el administrador o el super administrador',
   administracion: 'el super administrador',
-  plantillas: 'el abogado o el super administrador',
-  amortizacion: 'el contador o el super administrador',
-  contabilidad: 'el contador o el super administrador',
+  sistema: 'el super administrador',
+  plantillas: 'el administrador o el super administrador',
+  amortizacion: 'el administrador o el super administrador',
+  contabilidad: 'el administrador o el super administrador',
   registro_duenos: 'los dueños',
   datos_personales: 'los dueños (cada uno los suyos)',
 };

@@ -98,7 +98,7 @@ export function Documentos() {
                 <Info className="mt-0.5 size-4 shrink-0" />
                 <span>
                   Las plantillas incluidas son <strong>modelos referenciales</strong>. Antes de usarlas con clientes, hágalas revisar por el abogado de la empresa
-                  y ajuste su texto aquí{esAdmin ? '' : ' (las modifica el abogado o el super administrador)'}. Los textos entre corchetes [ ] deben completarse.
+                  y ajuste su texto aquí{esAdmin ? '' : ' (las modifica el administrador o el super administrador)'}. Los textos entre corchetes [ ] deben completarse.
                 </span>
               </p>
               {(Object.keys(TIPOS_DOCUMENTO) as TipoDocumento[]).map((t) => {

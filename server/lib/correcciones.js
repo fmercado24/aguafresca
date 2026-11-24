@@ -9,7 +9,7 @@ import { registrar } from './bitacora.js';
 import { leerLoteo } from './loteo.js';
 import { avisar, usuariosCon } from './avisos.js';
 import { hoy } from './fechas.js';
-import { FIRMA_CARTA_ANTERIOR, FIRMA_CARTA_NUEVA } from './plantillas-base.js';
+import { FIRMA_CARTA_ANTERIOR, FIRMA_CARTA_NUEVA, FECHA_CARTA_NUEVA } from './plantillas-base.js';
 
 const ventasVigentes = (condicion = '') => db.all(
   `SELECT v.id, p.numero AS parcela FROM ventas v JOIN parcelas p ON p.id = v.parcela_id
@@ -126,12 +126,39 @@ function firmaEnCartas() {
   return { corregidas, omitidas, titulo: 'Pie de firma en las cartas de cobranza' };
 }
 
+// 5. El encabezado de los documentos dice siempre "Punta Arenas, <fecha>" (antes usaba la ciudad de la empresa, que
+//    si estaba vacía salía como una línea en blanco). A una carta sin línea de lugar y fecha se le agrega al comienzo.
+function lugarEnDocumentos() {
+  const corregidas = [], omitidas = [];
+  for (const p of db.all('SELECT id, tipo, nombre, contenido FROM plantillas ORDER BY id')) {
+    let contenido = p.contenido
+      .replace(/\{\{\s*empresa\.ciudad\s*\}\},\s*\{\{\s*fecha_hoy\s*\}\}/g, '{{lugar_emision}}, {{fecha_hoy}}')
+      .replace(/En \{\{\s*empresa\.ciudad\s*\}\}, a \{\{\s*fecha_hoy\s*\}\}/g, 'En {{lugar_emision}}, a {{fecha_hoy}}');
+    if (p.tipo === 'carta_cobranza' && !/\{\{\s*lugar_emision\s*\}\}/.test(contenido)) contenido = `${FECHA_CARTA_NUEVA}\n${contenido}`;
+    if (contenido === p.contenido) continue;
+    actualizar('plantillas', p.id, { contenido, actualizado_en: `${hoy()} 00:00:00` });
+    registrar(null, {
+      accion: 'plantilla_editada', entidad: 'plantilla', entidadId: p.id, anterior: p, detalle: p.nombre,
+      motivo: 'Corrección automática: el encabezado dice siempre "Punta Arenas" junto a la fecha',
+    });
+    corregidas.push(p.nombre);
+  }
+  return { corregidas, omitidas, titulo: 'Punta Arenas en el encabezado de los documentos' };
+}
+
 const CORRECCIONES = [
-  { id: '2026-11-21-repactadas', aplicar: repactadas },
-  { id: '2026-11-21-ultima-cuota', aplicar: ultimasCuotas },
-  { id: '2026-11-21-plano-g-h', aplicar: planoGH },
-  { id: '2026-11-21-firma-cartas', aplicar: firmaEnCartas },
+  { id: '2026-11-21-repactadas', titulo: 'Créditos repactados con cuotas aplazadas', aplicar: repactadas },
+  { id: '2026-11-21-ultima-cuota', titulo: 'Última cuota completa en los créditos vigentes', aplicar: ultimasCuotas },
+  { id: '2026-11-21-plano-g-h', titulo: 'Ubicación de las manzanas G y H en el mapa', aplicar: planoGH },
+  { id: '2026-11-21-firma-cartas', titulo: 'Pie de firma en las cartas de cobranza', aplicar: firmaEnCartas },
+  { id: '2026-11-24-lugar-emision', titulo: 'Punta Arenas en el encabezado de los documentos', aplicar: lugarEnDocumentos },
 ];
+
+/** Correcciones conocidas y si ya se aplicaron en esta base (para la pantalla Sistema). */
+export function estadoCorrecciones() {
+  const hechas = new Set(leerSeccion('correcciones')?.aplicadas ?? []);
+  return CORRECCIONES.map(({ id, titulo }) => ({ id, titulo, aplicada: hechas.has(id) }));
+}
 
 /** Aplica las correcciones pendientes. Devuelve un resumen de cada una que cambió algo. */
 export function aplicarCorrecciones() {
@@ -150,7 +177,7 @@ export function aplicarCorrecciones() {
   if (!resumen.length) return resumen;
   const detalle = resumen.map((r) => `${r.titulo}: ${r.corregidas.join(', ') || 'ninguna'}${r.omitidas.length ? `. Sin corregir: ${r.omitidas.join('; ')}` : ''}`).join(' · ');
   registrar(null, { accion: 'datos_corregidos', detalle });
-  // Aviso al contador y al super administrador, que son quienes revisan las tablas.
+  // Aviso al administrador y al super administrador, que son quienes revisan las tablas.
   const ids = usuariosCon('amortizacion').map((u) => u.id);
   avisar(ids, {
     tipo: 'sistema', titulo: 'Se corrigieron datos al actualizar el sistema', detalle: detalle.slice(0, 900),

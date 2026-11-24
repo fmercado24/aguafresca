@@ -50,46 +50,52 @@ Después de ingresar con la cuenta `admin`:
 1. **Configuración → Empresa y proyecto**: razón social, RUT, representante legal, datos bancarios, ubicación e inscripción del fundo. Estos datos alimentan el membrete, las cartas y las promesas (lo que falte sale como una línea en blanco `____` para completar a mano).
 2. **Configuración → Crédito y cobranza**: interés mensual habitual, pie, número de cuotas e interés por mora.
 3. **Parcelas → Lista de precios → Cambios en bloque**: fije los precios de lista (por m² o un monto fijo) por manzana o para las parcelas filtradas. Ahí mismo se puede cambiar el nombre de una manzana y el prefijo de sus códigos.
-4. **Documentos → Plantillas**: el abogado revisa y ajusta los textos (ver nota legal más abajo).
+4. **Documentos → Plantillas**: el administrador ajusta los textos, revisados por el abogado de la empresa (ver nota legal más abajo).
 
 ## Cuentas y permisos
 
 El sistema tiene **exactamente tres cuentas**; no se crean ni se eliminan desde la aplicación. Se ingresa con el nombre de usuario.
 `ldiaz` y `pmercado` son las cuentas de los **dueños**.
 
-| Función | `admin` · Super administrador | `ldiaz` · Luis Díaz, abogado y dueño | `pmercado` · Patricio Mercado, contador y dueño |
+| Función | `admin` · Super administrador | `pmercado` · Administrador (dueño) | `ldiaz` · Usuario (dueño) |
 |---|:-:|:-:|:-:|
 | Ver toda la información: parcelas, clientes y deudores, ventas, cuotas, cobranza, flujo de ingresos, pagos | ✓ | ✓ | ✓ |
-| Clientes (ficha completa) y gestiones de cobranza, ventas, registrar pagos, reservar parcelas | ✓ | | ✓ |
+| Clientes (ficha completa) y gestiones de cobranza, ventas, registrar pagos, reservar parcelas | ✓ | ✓ | |
 | Cotizaciones | ✓ | ✓ | ✓ |
-| Informar al contador una venta cerrada (para que él la registre) | | ✓ | |
+| Informar al administrador una venta cerrada (para que la registre) | | | ✓ |
 | Completar los datos esenciales de un cliente (identificación y domicilio) | ✓ | ✓ | ✓ |
-| Agendar visitas | ✓ | ✓ a su nombre (modifica solo las que agendó) | ✓ |
+| Agendar visitas | ✓ | ✓ | ✓ a su nombre (modifica solo las que agendó) |
 | Confeccionar cartas y promesas · enviar cartas de cobranza por correo o WhatsApp | ✓ | ✓ | ✓ |
 | Modificar las plantillas de documentos legales | ✓ | ✓ | |
-| Precios de lista de las parcelas (de a una o en bloque) | ✓ | | ✓ |
-| Tabla de amortización · datos contables (tasas, corregir o anular pagos, anular ventas) · envío programado de cartas | ✓ | | ✓ |
-| Datos sensibles de la empresa · correo para enviar cartas | ✓ | | |
-| Parcelas: crear, manzanas y códigos, editar el mapa, cargar el plano | ✓ | | |
-| Cuentas: nombres y restablecer contraseñas · eliminar clientes | ✓ | | |
-| Registro de cambios | todos los cambios | los de los dueños | los de los dueños |
+| Precios de lista de las parcelas (de a una o en bloque) | ✓ | ✓ | |
+| Tabla de amortización · datos contables (tasas, corregir o anular pagos, anular ventas) · envío programado de cartas | ✓ | ✓ | |
+| Datos de la empresa y el proyecto · correo para enviar cartas · firma del representante | ✓ | ✓ | |
+| Parcelas: crear, manzanas y códigos, editar el mapa, cargar el plano · Google Earth | ✓ | ✓ | |
+| Cuentas: nombres, restablecer contraseñas, **bloquear o reactivar** y **cerrar sesiones** · eliminar clientes | ✓ | | |
+| **Sistema**: estado de la instalación, **respaldos de la base desde la web**, correcciones automáticas aplicadas | ✓ | | |
+| Registro de cambios | todos los cambios | los de los dueños y del sistema | los de los dueños y del sistema |
 | Datos personales para los documentos legales (cada uno los suyos) | | ✓ | ✓ |
 | Avisos de visitas en la campana | | ✓ | ✓ |
 
-El abogado **no registra nada que tenga que ver con dinero**: ve las ventas, deudas, deudores e ingresos, pero los botones para
-registrar ventas o pagos, reservar o cambiar precios no aparecen en su cuenta (y el servidor los rechaza igual). Sí cotiza, y
-cuando cierra una venta la informa al contador (ver abajo). Cuando un documento necesita datos del cliente que faltan (RUT,
-estado civil, profesión, domicilio…), el sistema lo avisa y él mismo puede completarlos, sin acceso a la renta ni a los
+El super administrador puede todo lo del administrador y, además, las cuentas y el sistema. Una cuenta **bloqueada** no puede
+ingresar (al intentarlo con su contraseña se le avisa que está bloqueada) y se cierran sus sesiones abiertas; sus datos y lo
+que registró se conservan. En **Configuración → Sistema** se descarga un respaldo de la base al momento (una copia completa,
+aunque el sistema esté en uso) y los respaldos automáticos que se hacen antes de cada actualización.
+
+El usuario (`ldiaz`) **no registra nada que tenga que ver con dinero**: ve las ventas, deudas, deudores e ingresos, pero los botones
+para registrar ventas o pagos, reservar o cambiar precios no aparecen en su cuenta (y el servidor los rechaza igual). Sí cotiza,
+y cuando cierra una venta la informa al administrador (ver abajo). Cuando un documento necesita datos del cliente que faltan
+(RUT, estado civil, profesión, domicilio…), el sistema lo avisa y él mismo puede completarlos, sin acceso a la renta ni a los
 antecedentes comerciales.
 
-### Ventas que cierra el abogado
+### Ventas que cierra el usuario
 
-1. El abogado cotiza la parcela y, cuando el cliente acepta, en la cotización elige **Informar venta al contador** (con notas
+1. El usuario cotiza la parcela y, cuando el cliente acepta, en la cotización elige **Informar venta al administrador** (con notas
    opcionales). La parcela queda reservada, si así lo indica.
-2. El contador recibe el aviso en la campana y la venta aparece en **Ventas → Ventas informadas por registrar**. *Registrar
-   venta* abre el formulario con todos los datos de la cotización; él revisa el comprador y la forma de pago y la registra.
-3. Al registrarla, el abogado recibe el aviso. Si el contador la descarta (por ejemplo, el cliente desistió), indica el motivo,
-   se libera la reserva y el abogado también se entera. Mientras espera, la cotización no se puede modificar.
+2. El administrador recibe el aviso en la campana y la venta aparece en **Ventas → Ventas informadas por registrar**. *Registrar
+   venta* abre el formulario con todos los datos de la cotización; revisa el comprador y la forma de pago y la registra.
+3. Al registrarla, el usuario recibe el aviso. Si el administrador la descarta (por ejemplo, el cliente desistió), indica el
+   motivo, se libera la reserva y el usuario también se entera. Mientras espera, la cotización no se puede modificar.
 
 Cada persona cambia su propia contraseña en **Configuración → Mi cuenta**.
 
@@ -103,8 +109,8 @@ qué campos cambiaron, no los datos). Con eso los documentos se completan solos:
   Si lo es, la comparecencia y la firma de la promesa toman sus datos (`{{representante.nombre}}`, `{{representante.rut}}`,
   `{{representante.nacionalidad}}`, `{{representante.estado_civil}}`, `{{representante.profesion}}`…) y se actualizan solas cuando él
   corrige los suyos. Si es otra persona, se escriben a mano el nombre y el RUT, como antes.
-- **Variables de cada dueño** para usar en cualquier plantilla (*Insertar dato*): `{{abogado.nombre}}`, `{{abogado.rut}}`… (de `ldiaz`) y
-  `{{contador.nombre}}`, `{{contador.rut}}`… (de `pmercado`). Un dato sin completar sale como línea en blanco `____`.
+- **Variables de cada dueño** para usar en cualquier plantilla (*Insertar dato*): `{{ldiaz.nombre}}`, `{{ldiaz.rut}}`… y
+  `{{pmercado.nombre}}`, `{{pmercado.rut}}`… (los nombres anteriores `{{abogado.…}}` y `{{contador.…}}` siguen funcionando). Un dato sin completar sale como línea en blanco `____`.
 
 ### Protección contra errores
 
@@ -146,7 +152,7 @@ es menor, el pie propuesto es el precio.
 
 ### Aplazar cuotas
 
-Cuando se acuerda con un cliente que no pague uno o más meses (repactación), en la venta → **Aplazar cuotas** (contador o super
+Cuando se acuerda con un cliente que no pague uno o más meses (repactación), en la venta → **Aplazar cuotas** (administrador o super
 administrador) se elige desde qué cuota y cuántos meses. Esos meses la cuota queda en **$0**: se carga solo el interés del mes, que
 **aumenta la deuda de capital**, y las cuotas siguientes se corren con su mismo monto; al final se agregan las que hagan falta.
 Antes de guardar se ve cómo queda el crédito (cuotas, fecha de término, total a pagar), se exige un motivo y el cambio queda en
@@ -159,6 +165,10 @@ Los comprobantes de pago, las cotizaciones, el estado de cuenta impreso y las ca
 **representante legal**: su firma digital, nombre, cargo, RUT y la razón social. La firma se carga en **Configuración → Empresa y
 proyecto → Firma digital** (o el dueño designado representante, en *Mi cuenta*): una foto o escaneo de la firma en papel blanco;
 el sistema quita el fondo. En las cartas va con la variable `{{firma}}`; al enviarlas por correo la firma viaja como imagen adjunta.
+Todos los documentos llevan arriba el lugar y la fecha: **"Punta Arenas, 24 de noviembre de 2026"** (en las cartas y promesas,
+con la variable `{{lugar_emision}}`). Al guardarlos como PDF el navegador propone el nombre del archivo según el documento:
+**"Cobranza - <cliente>"** (cartas, también al exportar a Word), **"Pago - <cliente>"** (comprobantes), "Cotización - …",
+"Estado de cuenta - …", "Promesa - …" y "Ficha - …".
 El comprobante de pago indica **cuántas cuotas quedan pendientes y de cuál a cuál** (por ejemplo "Quedan 56 cuotas pendientes:
 de la N° 51 a la N° 106").
 
@@ -166,8 +176,8 @@ de la N° 51 a la N° 106").
 
 Cada visita dice **quién la agendó** (por ejemplo, "Luis Díaz (Abogado)") y quién la atiende. Los dueños reciben avisos en la
 **campana** (arriba): cuando el otro agenda, reprograma, cancela o elimina una visita, y un recordatorio de las visitas de las
-próximas 24 horas y otro **una hora antes**. Además, el contador recibe las ventas que informa el abogado y el resumen del envío
-programado de cartas, y el abogado se entera cuando su venta quedó registrada o fue rechazada. Tocar un aviso abre lo que
+próximas 24 horas y otro **una hora antes**. Además, el administrador recibe las ventas que informa el usuario y el resumen del envío
+programado de cartas, y el usuario se entera cuando su venta quedó registrada o fue rechazada. Tocar un aviso abre lo que
 corresponde (el día de la visita, la venta…).
 
 #### Avisos en el celular y el computador aunque el sistema esté cerrado
@@ -200,13 +210,13 @@ Requisitos:
 ### Envío de cartas de cobranza por correo y WhatsApp
 
 - **A mano**: en una carta emitida (Documentos), *Enviar por correo* o *Abrir en WhatsApp*. Con confirmación.
-- **Programado, solo por correo** (Configuración → Envío de cartas; lo define el contador): cada día, a la hora indicada (y si se
+- **Programado, solo por correo** (Configuración → Envío de cartas; lo define el administrador): cada día, a la hora indicada (y si se
   quiere solo de lunes a viernes), el sistema envía por correo a cada deudor la carta de la etapa que corresponde a los días de
   atraso de su cuota impaga más antigua (por defecto: primer aviso a los 5 días, segundo a los 20, último a los 45). Cada etapa se
   envía una sola vez; si el deudor se pone al día y se vuelve a atrasar, el ciclo parte de nuevo. **El sistema debe estar
   encendido** a esa hora.
 - **Cobranza → Envío de cartas** muestra qué saldría hoy, permite *Enviar ahora* y guarda el registro de cada envío (también en la
-  ficha del deudor, y un aviso al contador con el resumen).
+  ficha del deudor, y un aviso al administrador con el resumen).
 - **Modo de prueba** (activo al comenzar): los correos se registran pero no salen. Se desactiva cuando el correo está probado.
 - **Correo**: el super administrador configura el servidor SMTP de la cuenta de envío (por ejemplo Gmail con una *contraseña de
   aplicación*) y lo prueba con *Probar correo*. La contraseña no se vuelve a mostrar.
@@ -230,7 +240,7 @@ El mensaje sale desde la cuenta abierta en ese equipo: conviene usar un número 
 
 ### Editor de la tabla de amortización
 
-Desde una venta, **Editar tabla** (contador o super administrador):
+Desde una venta, **Editar tabla** (administrador o super administrador):
 
 - Cada cuota se edita a mano: vencimiento, interés y amortización. La cuota es siempre interés + amortización y el saldo insoluto se recalcula solo; las celdas cambiadas se marcan.
 - **Recalcular desde una cuota**: renegociación del capital pendiente con otra tasa o número de cuotas (cuota fija).
@@ -264,7 +274,7 @@ Los planos que entregó el cliente están en `planos/` (AutoCAD `.dwg` y Google 
 - **Imagen satelital**: el botón de satélite del mapa cambia el dibujo del plano por la foto satelital (Esri World Imagery), con
   las parcelas encima; cada equipo recuerda la vista elegida. Antes de usarla comercialmente conviene revisar las condiciones de
   uso de Esri (o cambiarla por otro proveedor, como Google, que pide una clave de pago).
-- **Google Earth**: no se puede abrir con un archivo indicado en un enlace, así que se configura una vez (contador o super
+- **Google Earth**: no se puede abrir con un archivo indicado en un enlace, así que se configura una vez (administrador o super
   administrador, en el botón *Google Earth* del mapa): se descarga un *enlace de red* (KML chico), se importa en un proyecto de
   Google Earth y se pega en el sistema el vínculo de ese proyecto. Desde ahí el botón *Google Earth* abre el proyecto en una
   pestaña nueva, y el proyecto lee las parcelas al día desde `/earth/<clave>/parcelas.kml` (sin sesión: lo protege la clave larga
@@ -304,7 +314,7 @@ Desde ahora las correcciones se hacen **en el sistema** (ficha del cliente, *Edi
 volviendo a cargar el Excel: una nueva carga borraría lo registrado después.
 
 **Correcciones automáticas** (`server/lib/correcciones.js`): cuando hay que corregir datos ya cargados, el servidor lo hace una
-sola vez al arrancar después de una actualización, queda en el registro de cambios y se avisa al contador. Así se aplicaron
+sola vez al arrancar después de una actualización, queda en el registro de cambios y se avisa al administrador. Así se aplicaron
 (21-11-2026): los meses repactados de C-13, C-16, G-12 y G-15 como cuotas aplazadas (antes su interés se había sumado a las
 cuotas siguientes); la **última cuota completa** en los créditos vigentes; la ubicación de las manzanas G y H en el mapa; y el pie
 de firma en las cartas de cobranza. Cada tabla corregida se puede deshacer desde el historial de su venta.
@@ -412,7 +422,7 @@ que las tasas de interés y de mora no superen el interés máximo convencional 
 ## Alcance de esta versión
 
 - Montos en **pesos chilenos**. No maneja UF.
-- Un pago mayor a la cuota se imputa a las cuotas siguientes; para un **prepago a capital** el contador ajusta la tabla con el editor (p. ej. *Recalcular desde una cuota*).
+- Un pago mayor a la cuota se imputa a las cuotas siguientes; para un **prepago a capital** el administrador ajusta la tabla con el editor (p. ej. *Recalcular desde una cuota*).
 - Una venta tiene **un comprador**; un segundo comprador se agrega a mano en el texto del contrato.
 - WhatsApp se envía a mano (sin la API pagada de Meta); los envíos programados de cartas salen solo por correo.
 - La "app" es la aplicación web instalable; no está publicada en Google Play ni App Store.

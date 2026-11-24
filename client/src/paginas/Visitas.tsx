@@ -46,7 +46,7 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
   const clientes = useDatos<ClienteResumen[]>('/clientes');
   const usuarios = useDatos<Cuenta[]>('/usuarios');
   const { usuario, puede } = useSesion();
-  // El contador y el super administrador modifican cualquier visita; el abogado, solo las que agendó (y a su nombre).
+  // El administrador y el super administrador modifican cualquier visita; el usuario, solo las que agendó (y a su nombre).
   const todas = puede('visitas_todas');
   const soloLectura = !!inicial.id && !todas && inicial.creado_por !== usuario?.id;
   const [b, setB] = useState(inicial);
@@ -100,7 +100,7 @@ function FormularioVisita({ inicial, alCerrar, alGuardar }: { inicial: Borrador;
       {b.agendada_por && (
         <p className="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">
           Agendada por <strong>{b.agendada_por}</strong>.
-          {soloLectura && ' Solo quien la agendó, el contador o el super administrador pueden modificarla.'}
+          {soloLectura && ' Solo quien la agendó, el administrador o el super administrador pueden modificarla.'}
         </p>
       )}
       <form id={idForm} onSubmit={guardar}>

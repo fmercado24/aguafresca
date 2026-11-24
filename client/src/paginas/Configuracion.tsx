@@ -1,19 +1,21 @@
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { BellRing, CircleCheck, Download, ImageUp, KeyRound, Pencil, ShieldCheck, Signature, Trash2, UserRound } from 'lucide-react';
+import {
+  BellRing, CircleCheck, DatabaseBackup, Download, ImageUp, KeyRound, Lock, LogOut, Pencil, ServerCog, ShieldCheck, Signature, Trash2, Unlock, UserRound,
+} from 'lucide-react';
 import { api, useDatos } from '../api';
 import { useAvisos, useConfig, useSesion } from '../contexto';
 import { ACCIONES_REGISTRO, ListaCambios, listarCambios } from '../componentes/Cambios';
 import { EnvioDeCartas } from './EnvioCartas';
 import { activarPush, desactivarPush, estadoPush, motivoSinPush, type EstadoPush } from '../push';
 import { correoValido, descargarCsv, errorTelefono, fechaHoraRegistro, formatearRut, pesos, rutValido } from '../formato';
-import type { Config, Cuenta, DatosPersonales, EntradaRegistro, Permiso } from '../tipos';
+import type { Config, Cuenta, DatosPersonales, EntradaRegistro, EstadoSistema, Permiso } from '../tipos';
 import {
   AreaTexto, Boton, Campo, Carga, Encabezado, Entrada, EntradaDecimal, EntradaEntero, EntradaMonto, EntradaRut, EntradaTelefono, Insignia, Modal, Pestanas,
-  Selector, Tabla, Tarjeta, Vacio, td, th,
+  Selector, Tabla, Tarjeta, Vacio, claseBoton, td, th,
 } from '../ui';
 
-type Pestana = 'empresa' | 'credito' | 'envios' | 'cuentas' | 'registro' | 'cuenta';
+type Pestana = 'empresa' | 'credito' | 'envios' | 'cuentas' | 'sistema' | 'registro' | 'cuenta';
 
 // Una pestaña se muestra si la cuenta tiene alguno de los permisos indicados.
 const PESTANAS: { id: Pestana; etiqueta: string; permisos?: Permiso[] }[] = [
@@ -21,6 +23,7 @@ const PESTANAS: { id: Pestana; etiqueta: string; permisos?: Permiso[] }[] = [
   { id: 'credito', etiqueta: 'Crédito y cobranza', permisos: ['contabilidad'] },
   { id: 'envios', etiqueta: 'Envío de cartas', permisos: ['empresa', 'contabilidad'] },
   { id: 'cuentas', etiqueta: 'Cuentas', permisos: ['administracion'] },
+  { id: 'sistema', etiqueta: 'Sistema', permisos: ['sistema'] },
   { id: 'registro', etiqueta: 'Registro de cambios', permisos: ['administracion', 'registro_duenos'] },
   { id: 'cuenta', etiqueta: 'Mi cuenta' },
 ];
@@ -41,6 +44,7 @@ export function Configuracion() {
       {pestana === 'credito' && <ParametrosCredito />}
       {pestana === 'envios' && <EnvioDeCartas />}
       {pestana === 'cuentas' && <Cuentas />}
+      {pestana === 'sistema' && <Sistema />}
       {pestana === 'registro' && <Registro />}
       {pestana === 'cuenta' && <MiCuenta />}
     </>
@@ -290,7 +294,7 @@ function BarraGuardar({ cambios, guardando, alDescartar }: { cambios: number; gu
   );
 }
 
-// ---------- Parámetros contables (contador y super administrador) ----------
+// ---------- Parámetros contables (administrador y super administrador) ----------
 
 const ETIQUETAS_CREDITO: Record<keyof Config['credito'], string> = {
   tasa_mensual: 'Interés mensual del crédito (%)', pie_monto: 'Pie habitual ($)', n_cuotas: 'Número de cuotas habitual',
@@ -369,9 +373,9 @@ function ParametrosCredito() {
 // ---------- Las tres cuentas (super administrador) ----------
 
 const QUE_PUEDE: Record<string, string> = {
-  superadmin: 'Todo: datos sensibles de la empresa, correo de envío de cartas, precios y mapa de parcelas, cuentas, registro de cambios completo, plantillas legales, tabla de amortización y datos contables.',
-  abogado: 'Dueño. Ve toda la información (ventas, deudas, cobranza, ingresos) sin registrar nada de dinero. Cotiza e informa al contador las ventas que cierra; completa los datos esenciales de los clientes; agenda visitas a su nombre; trabaja los documentos legales (plantillas, promesas y cartas) y ve el registro de cambios de los dueños.',
-  contador: 'Dueño. Clientes, cotizaciones, ventas y pagos; tabla de amortización, datos contables, precios de las parcelas y envío programado de cartas. Ve el registro de cambios de los dueños.',
+  superadmin: 'Todo lo del administrador y, además, las cuentas (nombres, contraseñas, bloqueo y sesiones abiertas), el registro de cambios completo, eliminar clientes, el estado del sistema y los respaldos de la base de datos.',
+  admin: 'Dueño. Clientes, cotizaciones, ventas y pagos; tabla de amortización, datos contables, precios, mapa y parcelas; datos de la empresa, correo de envío y envío programado de cartas; plantillas de documentos. Ve el registro de cambios de los dueños.',
+  usuario: 'Dueño. Ve toda la información (ventas, deudas, cobranza, ingresos) sin registrar nada de dinero. Cotiza e informa al administrador las ventas que cierra; completa los datos esenciales de los clientes; agenda visitas a su nombre; confecciona cartas y promesas, y ve el registro de cambios de los dueños.',
 };
 
 function Cuentas() {
@@ -415,6 +419,39 @@ function Cuentas() {
     }
   }
 
+  async function bloqueo(c: Cuenta, activo: boolean) {
+    if (!(await avisos.confirmar(activo
+      ? { titulo: `¿Reactivar la cuenta “${c.usuario}”?`, mensaje: 'Podrá volver a ingresar con su contraseña.', confirmar: 'Reactivar' }
+      : {
+          titulo: `¿Bloquear la cuenta “${c.usuario}”?`,
+          mensaje: `${c.nombre} no podrá ingresar al sistema hasta que la reactive, y se cerrarán sus sesiones abiertas en todos los equipos. Sus datos y lo que registró se conservan.`,
+          confirmar: 'Bloquear', peligro: true,
+        }))) return;
+    try {
+      await api.post(`/usuarios/${c.id}/bloqueo`, { activo });
+      avisos.ok(activo ? `Cuenta “${c.usuario}” reactivada` : `Cuenta “${c.usuario}” bloqueada`);
+      consulta.recargar();
+    } catch (err) {
+      avisos.error(err);
+    }
+  }
+
+  async function cerrarSesiones(c: Cuenta) {
+    const propia = c.id === yo?.id;
+    if (!(await avisos.confirmar({
+      titulo: propia ? '¿Cerrar sus otras sesiones?' : `¿Cerrar las sesiones de “${c.usuario}”?`,
+      mensaje: propia ? 'Se cierran sus sesiones en los demás equipos; en este sigue conectado.' : 'Tendrá que volver a ingresar con su contraseña en todos sus equipos (por ejemplo, si un celular se perdió).',
+      confirmar: 'Cerrar sesiones',
+    }))) return;
+    try {
+      const r = await api.post<{ cerradas: number }>(`/usuarios/${c.id}/cerrar-sesiones`, {});
+      avisos.ok(r.cerradas ? `Se cerraron ${r.cerradas === 1 ? '1 sesión' : `${r.cerradas} sesiones`}` : 'No había otras sesiones abiertas');
+      consulta.recargar();
+    } catch (err) {
+      avisos.error(err);
+    }
+  }
+
   return (
     <div className="max-w-3xl">
       <Tarjeta titulo="Cuentas del sistema" relleno={false}>
@@ -427,9 +464,13 @@ function Cuentas() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-stone-900">{c.nombre}</span>
                       <Insignia tono={c.rol === 'superadmin' ? 'azul' : 'gris'}>{c.perfil}</Insignia>
+                      {c.activo === 0 && <Insignia tono="rojo" icono={Lock}>Bloqueada</Insignia>}
                       {c.id === yo?.id && <span className="text-xs text-stone-500">(usted)</span>}
                     </div>
-                    <div className="mt-0.5 text-sm text-stone-600">Usuario: <code className="rounded bg-stone-100 px-1">{c.usuario}</code></div>
+                    <div className="mt-0.5 text-sm text-stone-600">
+                      Usuario: <code className="rounded bg-stone-100 px-1">{c.usuario}</code>
+                      {c.activo !== 0 && <span className="text-stone-500"> · {c.sesiones === 1 ? '1 sesión abierta' : `${c.sesiones ?? 0} sesiones abiertas`}</span>}
+                    </div>
                     <div className="mt-1 text-xs text-stone-500">{QUE_PUEDE[c.rol ?? '']}</div>
                     {c.datos && (
                       <div className={`mt-1 text-xs ${c.datos.completos === c.datos.total ? 'text-green-800' : 'text-amber-800'}`}>
@@ -437,7 +478,17 @@ function Cuentas() {
                       </div>
                     )}
                   </div>
-                  <Boton chico variante="secundario" icono={Pencil} onClick={() => setEditando({ cuenta: c, nombre: c.nombre, password: '', repetida: '' })}>Editar</Boton>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Boton chico variante="secundario" icono={Pencil} onClick={() => setEditando({ cuenta: c, nombre: c.nombre, password: '', repetida: '' })}>Editar</Boton>
+                    {c.activo !== 0 && (c.sesiones ?? 0) > (c.id === yo?.id ? 1 : 0) && (
+                      <Boton chico variante="fantasma" icono={LogOut} onClick={() => cerrarSesiones(c)}>Cerrar sesiones</Boton>
+                    )}
+                    {c.rol !== 'superadmin' && (
+                      c.activo === 0
+                        ? <Boton chico variante="secundario" icono={Unlock} onClick={() => bloqueo(c, true)}>Reactivar</Boton>
+                        : <Boton chico variante="fantasma" icono={Lock} className="text-red-700" onClick={() => bloqueo(c, false)}>Bloquear</Boton>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -445,8 +496,8 @@ function Cuentas() {
         </Carga>
       </Tarjeta>
       <p className="mt-3 text-sm text-stone-600">
-        El sistema tiene siempre estas tres cuentas: no se crean ni se eliminan. Todas tienen las funciones básicas (clientes, ventas, pagos,
-        cotizaciones, visitas, confeccionar documentos y reservar parcelas).
+        El sistema tiene siempre estas tres cuentas: no se crean ni se eliminan, pero la de un dueño se puede bloquear (no puede ingresar
+        y se cierran sus sesiones) y volver a activar. Todas ven toda la información; lo que cada una puede modificar está bajo su nombre.
       </p>
 
       {editando && (
@@ -489,6 +540,94 @@ function enlaceDe(e: EntradaRegistro): string | null {
   if (e.entidad === 'plantilla' && e.accion !== 'plantilla_eliminada') return `/plantillas/${e.entidad_id}`;
   if (e.entidad === 'parcela' && e.accion !== 'parcela_eliminada') return '/parcelas?vista=lista';
   return null;
+}
+
+// ---------- Sistema (super administrador) ----------
+
+/** Fecha con zona horaria → 'AAAA-MM-DD HH:MM:SS' en UTC (el formato que muestra fechaHoraRegistro). */
+const utc = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 19);
+const tamanoLegible = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1).replace('.', ',')} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+
+function Sistema() {
+  const consulta = useDatos<EstadoSistema>('/sistema/estado');
+  return (
+    <Carga consulta={consulta}>
+      {(e) => (
+        <div className="grid max-w-5xl items-start gap-4 lg:grid-cols-2">
+          <Tarjeta titulo={<span className="flex items-center gap-2"><DatabaseBackup className="size-4 text-marca-700" />Respaldos de la base de datos</span>}>
+            <p className="text-sm text-stone-600">
+              La base de datos tiene toda la información: parcelas, clientes, ventas, pagos, documentos y configuración. Descargue un respaldo
+              y guárdelo fuera del servidor (por ejemplo, en su computador o en Google Drive). La firma del representante y el dibujo del plano
+              se recuperan aparte: la firma se vuelve a subir y el plano se vuelve a cargar desde el mapa.
+            </p>
+            <a href="/api/sistema/respaldo" download className={`${claseBoton('primario')} mt-3 w-full`}><Download className="size-4" />Descargar respaldo ahora</a>
+            <div className="mt-4 text-sm font-medium text-stone-900">Respaldos automáticos</div>
+            <p className="text-xs text-stone-500">Se guardan en el servidor antes de cada actualización (los últimos 15).</p>
+            {e.respaldos.length === 0 ? (
+              <p className="mt-2 text-sm text-stone-500">Todavía no hay respaldos automáticos.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200">
+                {e.respaldos.map((r) => (
+                  <li key={r.archivo} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate">{fechaHoraRegistro(utc(r.fecha))}</span>
+                      <span className="text-xs text-stone-500">{tamanoLegible(r.bytes)}</span>
+                    </span>
+                    <a href={`/api/sistema/respaldos/${encodeURIComponent(r.archivo)}`} download className={claseBoton('secundario', true)}><Download className="size-3.5" />Descargar</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Tarjeta>
+
+          <div className="space-y-4">
+            <Tarjeta titulo={<span className="flex items-center gap-2"><ServerCog className="size-4 text-marca-700" />Estado del sistema</span>}>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <dt className="text-stone-500">Versión instalada</dt>
+                <dd>{e.version ? <><code className="rounded bg-stone-100 px-1">{e.version.commit}</code> · {fechaHoraRegistro(utc(e.version.fecha))}<div className="text-xs text-stone-500">{e.version.mensaje}</div></> : '—'}</dd>
+                <dt className="text-stone-500">Funcionando desde</dt>
+                <dd>{fechaHoraRegistro(utc(e.iniciado))}</dd>
+                <dt className="text-stone-500">Base de datos</dt>
+                <dd>{tamanoLegible(e.base.bytes)} · versión {e.base.migracion}</dd>
+                <dt className="text-stone-500">Registros</dt>
+                <dd>{e.base.registros.parcelas} parcelas · {e.base.registros.clientes} clientes · {e.base.registros.ventas} ventas · {e.base.registros.pagos} pagos · {e.base.registros.documentos} documentos</dd>
+                {e.disco && (
+                  <>
+                    <dt className="text-stone-500">Espacio libre en el disco</dt>
+                    <dd className={e.disco.libre < e.disco.total * 0.1 ? 'font-medium text-red-700' : ''}>{tamanoLegible(e.disco.libre)} de {tamanoLegible(e.disco.total)}</dd>
+                  </>
+                )}
+                <dt className="text-stone-500">Programa</dt>
+                <dd>Node.js {e.node.replace(/^v/, '')}</dd>
+              </dl>
+            </Tarjeta>
+            <Tarjeta titulo="Cuentas">
+              <ul className="space-y-1 text-sm">
+                {e.cuentas.map((c) => (
+                  <li key={c.usuario} className="flex items-center justify-between gap-2">
+                    <span><span className="font-medium">{c.nombre}</span> <span className="text-stone-500">({c.usuario} · {c.perfil})</span></span>
+                    <span className={c.activo ? 'text-stone-600' : 'font-medium text-red-700'}>{c.activo ? (c.sesiones === 1 ? '1 sesión' : `${c.sesiones} sesiones`) : 'Bloqueada'}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-stone-500">Para bloquear una cuenta o cerrar sus sesiones, vaya a la pestaña Cuentas.</p>
+            </Tarjeta>
+            <Tarjeta titulo="Correcciones automáticas de datos">
+              <ul className="space-y-1 text-sm">
+                {e.correcciones.map((c) => (
+                  <li key={c.id} className="flex items-start gap-2">
+                    <CircleCheck className={`mt-0.5 size-4 shrink-0 ${c.aplicada ? 'text-green-700' : 'text-stone-300'}`} />
+                    <span>{c.titulo}{!c.aplicada && <span className="text-stone-500"> (pendiente: se aplica al reiniciar)</span>}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-stone-500">El detalle de cada una está en el Registro de cambios.</p>
+            </Tarjeta>
+          </div>
+        </div>
+      )}
+    </Carga>
+  );
 }
 
 function Registro() {
@@ -732,7 +871,7 @@ function FormularioDatosPersonales({ guardados, alGuardar }: { guardados: DatosP
   const [d, setD] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
   const cambios = listarCambios(inicial, d, ETIQUETAS_PERSONALES);
-  const prefijo = usuario?.rol === 'abogado' ? 'abogado' : 'contador';
+  const prefijo = usuario?.usuario ?? 'ldiaz';
   const esRepresentante = config.empresa.representante_cuenta === usuario?.usuario;
 
   async function guardar(e: FormEvent) {

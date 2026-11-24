@@ -7,11 +7,11 @@ import { Membrete } from '../componentes/Membrete';
 import { PieFirma } from '../componentes/PieFirma';
 import { fecha, fechaHoraRegistro, fechaLarga, formatearRut, numero, pesos, porcentaje } from '../formato';
 import type { CotizacionDetalle } from '../tipos';
-import { AreaTexto, Boton, Carga, Casilla, Campo, Encabezado, EnlaceBoton, InsigniaCotizacion, Modal } from '../ui';
+import { AreaTexto, Boton, Carga, Casilla, Campo, Encabezado, EnlaceBoton, InsigniaCotizacion, Modal, useNombreArchivo } from '../ui';
 
-// ---------- Aviso de venta al contador (abogado) ----------
+// ---------- Aviso de venta al administrador (usuario) ----------
 
-/** El abogado cierra la venta con el cliente y la informa: el contador recibe el aviso y la registra. */
+/** El usuario (ldiaz) cierra la venta con el cliente y la informa: el administrador recibe el aviso y la registra. */
 function InformarVenta({ id, parcelaDisponible, alInformar }: { id: number; parcelaDisponible: boolean; alInformar: () => void }) {
   const avisos = useAvisos();
   const [abierto, setAbierto] = useState(false);
@@ -23,7 +23,7 @@ function InformarVenta({ id, parcelaDisponible, alInformar }: { id: number; parc
     setEnviando(true);
     try {
       await api.post(`/cotizaciones/${id}/informar-venta`, { notas, reservar });
-      avisos.ok('Venta informada: el contador recibió el aviso para registrarla');
+      avisos.ok('Venta informada: el administrador recibió el aviso para registrarla');
       setAbierto(false);
       alInformar();
     } catch (err) {
@@ -35,22 +35,22 @@ function InformarVenta({ id, parcelaDisponible, alInformar }: { id: number; parc
 
   return (
     <>
-      <Boton icono={BellRing} onClick={() => setAbierto(true)}>Informar venta al contador</Boton>
+      <Boton icono={BellRing} onClick={() => setAbierto(true)}>Informar venta al administrador</Boton>
       {abierto && (
         <Modal
-          abierto alCerrar={() => setAbierto(false)} titulo="Informar la venta al contador" ancho="sm"
+          abierto alCerrar={() => setAbierto(false)} titulo="Informar la venta al administrador" ancho="sm"
           pie={<><Boton variante="secundario" onClick={() => setAbierto(false)}>Cancelar</Boton><Boton icono={BellRing} cargando={enviando} onClick={informar}>Informar venta</Boton></>}
         >
           <div className="space-y-3 text-sm">
             <p className="text-stone-700">
-              El contador recibirá un aviso con los datos de esta cotización (parcela, comprador, precio y forma de pago) para registrar la venta.
+              El administrador recibirá un aviso con los datos de esta cotización (parcela, comprador, precio y forma de pago) para registrar la venta.
               Usted no registra pagos ni cuotas.
             </p>
-            <Campo etiqueta="Notas para el contador (opcional)">
+            <Campo etiqueta="Notas para el administrador (opcional)">
               <AreaTexto rows={3} maxLength={2000} value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Ej.: firmó hoy; paga el pie por transferencia el lunes." />
             </Campo>
             {parcelaDisponible && (
-              <Casilla checked={reservar} onChange={(e) => setReservar(e.target.checked)} etiqueta="Reservar la parcela mientras el contador registra la venta" />
+              <Casilla checked={reservar} onChange={(e) => setReservar(e.target.checked)} etiqueta="Reservar la parcela mientras el administrador registra la venta" />
             )}
           </div>
         </Modal>
@@ -65,7 +65,7 @@ function EstadoSolicitud({ s }: { s: NonNullable<CotizacionDetalle['solicitud']>
       <div className="no-imprimir mx-auto mb-4 flex max-w-3xl items-start gap-2 rounded-xl border border-marca-200 bg-marca-50 px-4 py-3 text-sm text-marca-900">
         <BellRing className="mt-0.5 size-4 shrink-0" />
         <div>
-          <strong>Venta informada al contador</strong> por {s.informada_por ?? '—'} el {fechaHoraRegistro(s.creado_en)}: espera que él la registre.
+          <strong>Venta informada al administrador</strong> por {s.informada_por ?? '—'} el {fechaHoraRegistro(s.creado_en)}: espera que la registre.
           {s.reservo_parcela ? ' La parcela quedó reservada.' : ''}
           {s.notas && <div className="mt-1 text-marca-800">Notas: {s.notas}</div>}
         </div>
@@ -105,6 +105,7 @@ function Detalle({ id }: { id: number }) {
   const avisos = useAvisos();
   const navegar = useNavigate();
   const consulta = useDatos<CotizacionDetalle>(`/cotizaciones/${id}`);
+  useNombreArchivo(consulta.datos ? `Cotización - ${consulta.datos.cotizacion.contacto_nombre}` : null);
 
   async function cambiarEstado(estado: 'vigente' | 'rechazada') {
     try {
@@ -131,7 +132,7 @@ function Detalle({ id }: { id: number }) {
       {({ cotizacion: q, parcela, simulacion: s, solicitud }) => {
         const contado = s.monto_financiado === 0;
         const sePuedeVender = q.estado === 'vigente' && (parcela.estado === 'disponible' || parcela.estado === 'reservada');
-        // Mientras el contador no registre la venta informada, la cotización no se modifica.
+        // Mientras el administrador no registre la venta informada, la cotización no se modifica.
         const informada = solicitud?.estado === 'pendiente';
         const editable = cotiza && !informada;
         // Crédito por monto de cuota: todas iguales y la última menor.
@@ -179,7 +180,7 @@ function Detalle({ id }: { id: number }) {
             {solicitud && <EstadoSolicitud s={solicitud} />}
 
             <div className="hoja mx-auto max-w-3xl rounded-xl border border-stone-200 bg-white p-6 text-stone-900 shadow-sm sm:p-10">
-              <Membrete titulo="Cotización" subtitulo={`N° ${String(q.id).padStart(5, '0')} · ${fechaLarga(q.fecha)}`} />
+              <Membrete titulo="Cotización" subtitulo={`N° ${String(q.id).padStart(5, '0')}`} fecha={q.fecha} />
 
               <div className="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
                 <div>

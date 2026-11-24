@@ -352,4 +352,26 @@ export const MIGRACIONES = [
   );
   CREATE INDEX idx_push_usuario ON push_suscripciones(usuario_id);
   `,
+
+  // 8. Perfiles nuevos: pmercado pasa de "contador" a "admin" (Administrador) y ldiaz de "abogado" a "usuario" (Usuario).
+  //    El CHECK de la columna obliga a reconstruir la tabla (mismas columnas y mismos datos).
+  `
+  CREATE TABLE usuarios_nuevo (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    nombre TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    rol TEXT NOT NULL CHECK (rol IN ('superadmin', 'admin', 'usuario')),
+    activo INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+    datos_personales TEXT NOT NULL DEFAULT '{}'
+  );
+  INSERT INTO usuarios_nuevo (id, usuario, nombre, password_hash, rol, activo, creado_en, datos_personales)
+    SELECT id, usuario, nombre, password_hash,
+           CASE rol WHEN 'contador' THEN 'admin' WHEN 'abogado' THEN 'usuario' ELSE rol END,
+           activo, creado_en, datos_personales
+      FROM usuarios;
+  DROP TABLE usuarios;
+  ALTER TABLE usuarios_nuevo RENAME TO usuarios;
+  `,
 ];

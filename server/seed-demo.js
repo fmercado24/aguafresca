@@ -155,13 +155,13 @@ db.tx(() => {
   cotizar({ parcela: 'I-2', contacto: 'Tomás Aguilera (interesado)', telefono: '+56 9 5550 0201', dias: 2, pie: 20, cuotas: 36, tasa: 1 });
   cotizar({ parcela: 'I-9', cliente: 9, contacto: PERSONAS[9][0], telefono: '+56 9 5550 0119', dias: 6, pie: 30, cuotas: 24, tasa: 1, descuento: 500_000 });
   cotizar({ parcela: 'I-14', contacto: 'Familia Castro Lagos (interesados)', telefono: '+56 9 5550 0202', dias: 32, pie: 20, cuotas: 48, tasa: 1.2 });
-  // Venta que cerró Luis (abogado) a partir de su cotización y que Patricio (contador) aún debe registrar.
+  // Venta que cerró Luis (usuario) a partir de su cotización y que Patricio (administrador) aún debe registrar.
   const cotizacionLuis = cotizar({ parcela: 'E-5', contacto: 'Rosa Vidal Paz', telefono: '+56 9 5550 0306', dias: 1, pie: 25, cuotas: 36, tasa: 1 });
   db.run('UPDATE cotizaciones SET usuario_id = ? WHERE id = ?', luis, cotizacionLuis);
-  informarVenta(cotizacionLuis, { notas: 'Firmó hoy la promesa; paga el pie por transferencia el lunes.', reservar: true }, { id: luis, nombre: 'Luis Díaz', rol: 'abogado' });
+  informarVenta(cotizacionLuis, { notas: 'Firmó hoy la promesa; paga el pie por transferencia el lunes.', reservar: true }, { id: luis, nombre: 'Luis Díaz', rol: 'usuario' });
 
   // ---------- Visitas ----------
-  // Agendadas por Luis (abogado) o Patricio (contador), que además las atienden.
+  // Agendadas por Luis (usuario) o Patricio (administrador), que además las atienden.
   const visita = (por, dias, hora, nombre, telefono, lotes, estado = 'programada', notas = '') =>
     insertar('visitas', {
       inicio: `${sumarDias(HOY, dias)}T${hora}`, duracion_min: 60, nombre, telefono,

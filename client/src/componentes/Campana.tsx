@@ -7,7 +7,7 @@ import { fechaHoraRegistro } from '../formato';
 import type { Aviso } from '../tipos';
 
 // La campana de avisos: visitas agendadas, reprogramadas o canceladas, recordatorios de las visitas del día
-// siguiente, ventas informadas por el abogado (y su registro) y resumen de las cartas de cobranza enviadas. Se actualiza sola cada minuto y al volver a la pestaña.
+// siguiente, ventas informadas por el usuario (y su registro) y resumen de las cartas de cobranza enviadas. Se actualiza sola cada minuto y al volver a la pestaña.
 // Con los avisos push activados en el equipo, además llegan como aviso del sistema aunque el sistema esté cerrado.
 
 const CADA = 60_000;
